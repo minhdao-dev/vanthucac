@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: vanthucac
+  profiles:
+    active: dev
+  threads:
+    virtual:
+      enabled: true
+  jpa:
+    open-in-view: false

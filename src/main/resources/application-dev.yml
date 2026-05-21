@@ -1,0 +1,29 @@
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/vanthucac?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh
+    username: root
+    password: root
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+springdoc:
+  api-docs:
+    path: /api-docs
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.htmla
+    enabled: true
+
+app:
+  jwt:
+    secret: "dev-secret-key-256-bit-minimum"
+    access-token-expiry-ms: 900000
+    refresh-token-expiry-seconds: 604800
