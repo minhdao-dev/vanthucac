@@ -6,6 +6,7 @@ import com.vanthucac.common.security.CustomAccessDeniedHandler;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -60,7 +61,12 @@ public class SecurityConfig {
                                 "/swagger-ui/**"
                         ).permitAll()
 
-                        .requestMatchers("/api/v1/users/me/seller/**").hasRole("SELLER")
+                        .requestMatchers("/api/v1/users/me/seller/wallet").hasRole("SELLER")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/listings").hasRole("SELLER")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/listings/*").hasRole("SELLER")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/listings/*").hasRole("SELLER")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/orders/*/confirm").hasRole("SELLER")
+
                         .requestMatchers("/api/v1/auction-sessions").hasRole("ADMIN")
                         .requestMatchers("/api/v1/auction-sessions/*/items").hasRole("ADMIN")
 

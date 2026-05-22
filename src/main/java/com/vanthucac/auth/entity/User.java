@@ -77,4 +77,10 @@ public class User {
     public void updatePhone(String phone) {
         this.phone = phone;
     }
+
+    public void updateProfile(String fullName, String phone, String avatarUrl) {
+        if (fullName != null && !fullName.isBlank()) this.fullName = fullName;
+        if (phone != null && !phone.isBlank()) this.phone = phone;
+        if (avatarUrl != null && !avatarUrl.isBlank()) this.avatarUrl = avatarUrl;
+    }
 }
