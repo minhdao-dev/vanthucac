@@ -19,11 +19,10 @@ springdoc:
     path: /api-docs
     enabled: true
   swagger-ui:
-    path: /swagger-ui.htmla
+    path: /swagger-ui.html
     enabled: true
 
 app:
   jwt:
-    secret: "dev-secret-key-256-bit-minimum"
-    access-token-expiry-ms: 900000
-    refresh-token-expiry-seconds: 604800
+    secret: "d4ColNI6glOvBFa7qOp/Y51yIh3wYAsnVv+qNEwrHpTwRKGGBapfzuureEfConR3xkDH2QzpsEN/4fpgpwRc5w=="
+    expiration: 900
