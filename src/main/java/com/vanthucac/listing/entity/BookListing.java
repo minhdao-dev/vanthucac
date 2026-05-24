@@ -36,7 +36,7 @@ public class BookListing {
     private BigDecimal price;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @Column(name = "`condition`", nullable = false, length = 20)
     private BookCondition condition;
 
     @Column(nullable = false)
@@ -120,5 +120,12 @@ public class BookListing {
 
     public boolean isNotOwnedBy(Long sellerId) {
         return seller == null || !seller.getId().equals(sellerId);
+    }
+
+    public void deductStock(int quantity) {
+        if (this.stock < quantity) {
+            throw new IllegalStateException("Insufficient stock");
+        }
+        this.stock -= quantity;
     }
 }
