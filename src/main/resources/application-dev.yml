@@ -26,3 +26,5 @@ app:
   jwt:
     secret: "d4ColNI6glOvBFa7qOp/Y51yIh3wYAsnVv+qNEwrHpTwRKGGBapfzuureEfConR3xkDH2QzpsEN/4fpgpwRc5w=="
     expiration: 900
+  google-books:
+    api-key: ${GOOGLE_BOOKS_API_KEY}
