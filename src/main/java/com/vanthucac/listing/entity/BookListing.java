@@ -119,6 +119,6 @@ public class BookListing {
     }
 
     public boolean isNotOwnedBy(Long sellerId) {
-        return seller != null && seller.getId().equals(sellerId);
+        return seller == null || !seller.getId().equals(sellerId);
     }
 }
