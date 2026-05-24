@@ -5,8 +5,10 @@ import com.vanthucac.auth.entity.User;
 import com.vanthucac.auth.repository.UserRepository;
 import com.vanthucac.seller.dto.SellerProfileResponse;
 import com.vanthucac.seller.entity.SellerProfile;
+import com.vanthucac.seller.entity.SellerWallet;
 import com.vanthucac.seller.exception.SellerException;
 import com.vanthucac.seller.repository.SellerProfileRepository;
+import com.vanthucac.seller.repository.SellerWalletRepository;
 import com.vanthucac.user.dto.UpdateProfileRequest;
 import com.vanthucac.user.dto.UpgradeSellerRequest;
 import com.vanthucac.user.exception.UserException;
@@ -19,13 +21,16 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final SellerProfileRepository sellerProfileRepository;
+    private final SellerWalletRepository sellerWalletRepository;
 
     public UserService(
             UserRepository userRepository,
-            SellerProfileRepository sellerProfileRepository
+            SellerProfileRepository sellerProfileRepository,
+            SellerWalletRepository sellerWalletRepository
     ) {
         this.userRepository = userRepository;
         this.sellerProfileRepository = sellerProfileRepository;
+        this.sellerWalletRepository = sellerWalletRepository;
     }
 
     public UserProfileResponse getProfile(Jwt jwt) {
@@ -50,6 +55,9 @@ public class UserService {
 
         var sellerProfile = SellerProfile.create(user, request.shopName(), request.description());
         sellerProfileRepository.save(sellerProfile);
+        
+        var wallet = SellerWallet.create(sellerProfile);
+        sellerWalletRepository.save(wallet);
 
         return SellerProfileResponse.from(sellerProfile);
     }
