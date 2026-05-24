@@ -8,7 +8,7 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 
 @Repository
-public interface SellerProfileRepository extends JpaRepository<SellerProfile, Integer> {
+public interface SellerProfileRepository extends JpaRepository<SellerProfile, Long> {
     boolean existsByUser(User user);
 
     Optional<SellerProfile> findByUserId(Long userId);

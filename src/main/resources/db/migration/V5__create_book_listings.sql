@@ -1,10 +1,10 @@
 CREATE TABLE book_listings
 (
-    id              INT            NOT NULL AUTO_INCREMENT,
-    book_catalog_id INT            NOT NULL,
-    seller_id       INT,
+    id              BIGINT         NOT NULL AUTO_INCREMENT,
+    book_catalog_id BIGINT         NOT NULL,
+    seller_id       BIGINT,
     price           DECIMAL(15, 2) NOT NULL,
-    `condition`       VARCHAR(20)    NOT NULL,
+    `condition`     VARCHAR(20)    NOT NULL,
     stock           INT            NOT NULL,
     listing_type    VARCHAR(10)    NOT NULL,
     status          VARCHAR(20)    NOT NULL DEFAULT 'PENDING_REVIEW',
@@ -19,8 +19,8 @@ CREATE TABLE book_listings
 
 CREATE TABLE listing_images
 (
-    id         INT          NOT NULL AUTO_INCREMENT,
-    listing_id INT          NOT NULL,
+    id         BIGINT       NOT NULL AUTO_INCREMENT,
+    listing_id BIGINT       NOT NULL,
     image_url  VARCHAR(500) NOT NULL,
     sort_order INT,
 

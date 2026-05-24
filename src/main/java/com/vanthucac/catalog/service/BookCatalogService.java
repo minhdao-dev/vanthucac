@@ -47,7 +47,7 @@ public class BookCatalogService {
         );
     }
 
-    public BookCatalogResponse getById(Integer id) {
+    public BookCatalogResponse getById(Long id) {
         return bookCatalogRepository.findById(id)
                 .map(BookCatalogResponse::from)
                 .orElseThrow(CatalogException::bookNotFound);
@@ -100,7 +100,7 @@ public class BookCatalogService {
     }
 
     @Transactional
-    public BookCatalogResponse update(Integer id, CreateBookRequest request) {
+    public BookCatalogResponse update(Long id, CreateBookRequest request) {
         var book = bookCatalogRepository.findById(id)
                 .orElseThrow(CatalogException::bookNotFound);
 

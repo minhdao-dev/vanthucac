@@ -9,7 +9,7 @@ import java.time.Instant;
 import java.util.List;
 
 public record ListingResponse(
-        Integer id,
+        Long id,
         BookCatalogResponse book,
         SellerProfileResponse seller,
         BigDecimal price,

@@ -5,8 +5,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 
-public interface ListingImageRepository extends JpaRepository<ListingImage, Integer> {
-    List<ListingImage> findByListingIdOrderBySortOrder(Integer listingId);
+public interface ListingImageRepository extends JpaRepository<ListingImage, Long> {
+    List<ListingImage> findByListingIdOrderBySortOrder(Long listingId);
 
-    void deleteByListingId(Integer listingId);
+    void deleteByListingId(Long listingId);
 }

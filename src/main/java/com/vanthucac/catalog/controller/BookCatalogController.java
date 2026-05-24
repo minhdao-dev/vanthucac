@@ -33,9 +33,7 @@ public class BookCatalogController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<BookCatalogResponse>> getById(
-            @PathVariable Integer id
-    ) {
+    public ResponseEntity<ApiResponse<BookCatalogResponse>> getById(@PathVariable Long id) {
         var book = bookCatalogService.getById(id);
         return ResponseEntity.ok(ApiResponse.ok("Book retrieved successfully", book));
     }
@@ -60,7 +58,7 @@ public class BookCatalogController {
 
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<BookCatalogResponse>> update(
-            @PathVariable Integer id,
+            @PathVariable Long id,
             @Valid @RequestBody CreateBookRequest request
     ) {
         var book = bookCatalogService.update(id, request);

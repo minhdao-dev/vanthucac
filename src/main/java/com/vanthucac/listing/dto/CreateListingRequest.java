@@ -11,7 +11,7 @@ import java.util.List;
 public record CreateListingRequest(
 
         @NotNull(message = "Book catalog ID is required")
-        Integer bookCatalogId,
+        Long bookCatalogId,
 
         @NotNull(message = "Price is required")
         @DecimalMin(value = "1000", message = "Price must be at least 1000 VND")

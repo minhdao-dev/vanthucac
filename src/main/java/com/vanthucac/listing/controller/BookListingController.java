@@ -27,8 +27,8 @@ public class BookListingController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<PageResponse<ListingResponse>>> search(
-            @RequestParam(required = false) Integer bookId,
-            @RequestParam(required = false) Integer sellerId,
+            @RequestParam(required = false) Long bookId,
+            @RequestParam(required = false) Long sellerId,
             @RequestParam(required = false) String listingType,
             @RequestParam(required = false) String condition,
             @RequestParam(required = false) BigDecimal minPrice,
@@ -46,7 +46,7 @@ public class BookListingController {
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<ListingResponse>> getById(
-            @PathVariable Integer id
+            @PathVariable Long id
     ) {
         var listing = bookListingService.getById(id);
         return ResponseEntity.ok(ApiResponse.ok("Listing retrieved successfully", listing));
@@ -65,7 +65,7 @@ public class BookListingController {
 
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<ListingResponse>> update(
-            @PathVariable Integer id,
+            @PathVariable Long id,
             @Valid @RequestBody UpdateListingRequest request,
             @AuthenticationPrincipal Jwt jwt
     ) {
@@ -75,7 +75,7 @@ public class BookListingController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deactivate(
-            @PathVariable Integer id,
+            @PathVariable Long id,
             @AuthenticationPrincipal Jwt jwt
     ) {
         bookListingService.deactivate(id, jwt);

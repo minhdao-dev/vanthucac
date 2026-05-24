@@ -1,6 +1,6 @@
 CREATE TABLE book_catalogs
 (
-    id          INT          NOT NULL AUTO_INCREMENT,
+    id          BIGINT       NOT NULL AUTO_INCREMENT,
     isbn        VARCHAR(20),
     title       VARCHAR(500) NOT NULL,
     author      VARCHAR(255),

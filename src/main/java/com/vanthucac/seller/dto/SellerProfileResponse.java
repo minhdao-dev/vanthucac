@@ -5,7 +5,7 @@ import com.vanthucac.seller.entity.SellerProfile;
 import java.time.Instant;
 
 public record SellerProfileResponse(
-        Integer id,
+        Long id,
         String shopName,
         String description,
         String status,
