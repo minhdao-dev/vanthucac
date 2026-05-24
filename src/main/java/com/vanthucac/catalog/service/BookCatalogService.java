@@ -7,9 +7,8 @@ import com.vanthucac.catalog.entity.BookCatalog;
 import com.vanthucac.catalog.exception.CatalogException;
 import com.vanthucac.catalog.repository.BookCatalogRepository;
 import com.vanthucac.catalog.repository.BookCatalogSpecification;
+import com.vanthucac.common.util.PageableUtils;
 import com.vanthucac.infrastructure.external.GoogleBooksApiClient;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,7 +34,7 @@ public class BookCatalogService {
             int size,
             String sort
     ) {
-        var pageable = buildPageable(page, size, sort);
+        var pageable = PageableUtils.build(page, size, sort);
 
         var spec = Specification.allOf(
                 BookCatalogSpecification.hasKeyword(keyword),
@@ -115,19 +114,5 @@ public class BookCatalogService {
         );
 
         return BookCatalogResponse.from(book);
-    }
-
-    private PageRequest buildPageable(int page, int size, String sort) {
-        if (sort == null || sort.isBlank()) {
-            return PageRequest.of(page, size, Sort.by("createdAt").descending());
-        }
-
-        var parts = sort.split(",");
-        var field = parts[0].trim();
-        var direction = parts.length > 1 && parts[1].trim().equalsIgnoreCase("asc")
-                ? Sort.Direction.ASC
-                : Sort.Direction.DESC;
-
-        return PageRequest.of(page, size, Sort.by(direction, field));
     }
 }

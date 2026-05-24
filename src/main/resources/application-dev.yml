@@ -28,3 +28,9 @@ app:
     expiration: 900
   google-books:
     api-key: ${GOOGLE_BOOKS_API_KEY}
+  aws:
+    access-key: ${AWS_ACCESS_KEY}
+    secret-key: ${AWS_SECRET_KEY}
+    region: ap-southeast-1
+    s3:
+      bucket: vanthucac-dev

@@ -16,4 +16,12 @@ public class SellerException extends BusinessException {
                 HttpStatus.CONFLICT
         );
     }
+
+    public static SellerException sellerNotFound() {
+        return new SellerException(
+                "Seller profile not found",
+                SellerErrorCode.SELLER_NOT_FOUND,
+                HttpStatus.NOT_FOUND
+        );
+    }
 }
