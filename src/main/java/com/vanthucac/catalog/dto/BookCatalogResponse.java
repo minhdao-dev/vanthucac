@@ -5,7 +5,7 @@ import com.vanthucac.catalog.entity.BookCatalog;
 import java.time.Instant;
 
 public record BookCatalogResponse(
-        Integer id,
+        Long id,
         String isbn,
         String title,
         String author,

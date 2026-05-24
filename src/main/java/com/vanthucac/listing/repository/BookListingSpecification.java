@@ -10,14 +10,14 @@ public final class BookListingSpecification {
     private BookListingSpecification() {
     }
 
-    public static Specification<BookListing> hasBookId(Integer bookId) {
+    public static Specification<BookListing> hasBookId(Long bookId) {
         return (root, query, cb) -> {
             if (bookId == null) return null;
             return cb.equal(root.get("bookCatalog").get("id"), bookId);
         };
     }
 
-    public static Specification<BookListing> hasSellerId(Integer sellerId) {
+    public static Specification<BookListing> hasSellerId(Long sellerId) {
         return (root, query, cb) -> {
             if (sellerId == null) return null;
             return cb.equal(root.get("seller").get("id"), sellerId);

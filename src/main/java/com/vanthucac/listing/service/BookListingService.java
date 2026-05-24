@@ -1,5 +1,6 @@
 package com.vanthucac.listing.service;
 
+import com.vanthucac.catalog.dto.PageResponse;
 import com.vanthucac.catalog.entity.BookCatalog;
 import com.vanthucac.catalog.exception.CatalogException;
 import com.vanthucac.catalog.repository.BookCatalogRepository;
@@ -44,9 +45,9 @@ public class BookListingService {
         this.sellerProfileRepository = sellerProfileRepository;
     }
 
-    public com.vanthucac.catalog.dto.PageResponse<ListingResponse> search(
-            Integer bookId,
-            Integer sellerId,
+    public PageResponse<ListingResponse> search(
+            Long bookId,
+            Long sellerId,
             String listingType,
             String condition,
             BigDecimal minPrice,
@@ -75,7 +76,7 @@ public class BookListingService {
         );
     }
 
-    public ListingResponse getById(Integer id) {
+    public ListingResponse getById(Long id) {
         var listing = bookListingRepository.findById(id)
                 .orElseThrow(ListingException::listingNotFound);
         var images = getImageUrls(id);
@@ -104,12 +105,12 @@ public class BookListingService {
     }
 
     @Transactional
-    public ListingResponse update(Integer id, UpdateListingRequest request, Jwt jwt) {
+    public ListingResponse update(Long id, UpdateListingRequest request, Jwt jwt) {
         var listing = bookListingRepository.findById(id)
                 .orElseThrow(ListingException::listingNotFound);
 
         var sellerId = getSellerIdFromJwt(jwt);
-        if (!listing.isOwnedBy(sellerId)) {
+        if (listing.isNotOwnedBy(sellerId)) {
             throw ListingException.accessDenied();
         }
 
@@ -136,12 +137,12 @@ public class BookListingService {
     }
 
     @Transactional
-    public void deactivate(Integer id, Jwt jwt) {
+    public void deactivate(Long id, Jwt jwt) {
         var listing = bookListingRepository.findById(id)
                 .orElseThrow(ListingException::listingNotFound);
 
         var sellerId = getSellerIdFromJwt(jwt);
-        if (!listing.isOwnedBy(sellerId)) {
+        if (listing.isNotOwnedBy(sellerId)) {
             throw ListingException.accessDenied();
         }
 
@@ -154,11 +155,11 @@ public class BookListingService {
                 .orElseThrow(SellerException::sellerNotFound);
     }
 
-    private Integer getSellerIdFromJwt(Jwt jwt) {
+    private Long getSellerIdFromJwt(Jwt jwt) {
         return getSellerFromJwt(jwt).getId();
     }
 
-    private BookCatalog getBookCatalog(Integer bookCatalogId) {
+    private BookCatalog getBookCatalog(Long bookCatalogId) {
         return bookCatalogRepository.findById(bookCatalogId)
                 .orElseThrow(CatalogException::bookNotFound);
     }
@@ -187,7 +188,7 @@ public class BookListingService {
         }
     }
 
-    private List<String> getImageUrls(Integer listingId) {
+    private List<String> getImageUrls(Long listingId) {
         return listingImageRepository
                 .findByListingIdOrderBySortOrder(listingId)
                 .stream()

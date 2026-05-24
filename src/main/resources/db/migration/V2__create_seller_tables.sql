@@ -1,6 +1,6 @@
 CREATE TABLE seller_profiles
 (
-    id          INT          NOT NULL AUTO_INCREMENT,
+    id          BIGINT       NOT NULL AUTO_INCREMENT,
     user_id     BIGINT       NOT NULL,
     shop_name   VARCHAR(255) NOT NULL,
     description TEXT,
@@ -14,8 +14,8 @@ CREATE TABLE seller_profiles
 
 CREATE TABLE seller_wallets
 (
-    id         INT            NOT NULL AUTO_INCREMENT,
-    seller_id  INT            NOT NULL,
+    id         BIGINT         NOT NULL AUTO_INCREMENT,
+    seller_id  BIGINT         NOT NULL,
     balance    DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
     updated_at DATETIME(6)    NOT NULL,
     PRIMARY KEY (id),

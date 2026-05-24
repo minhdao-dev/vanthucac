@@ -55,7 +55,7 @@ public class UserService {
     }
 
     private User getUserFromJwt(Jwt jwt) {
-        var userId = Integer.parseInt(jwt.getSubject());
+        var userId = Long.parseLong(jwt.getSubject());
         return userRepository.findById(userId)
                 .orElseThrow(UserException::userNotFound);
     }

@@ -22,7 +22,7 @@ public class BookListing {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id;
+    private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "book_catalog_id", nullable = false)
@@ -118,7 +118,7 @@ public class BookListing {
         this.status = ListingStatus.INACTIVE;
     }
 
-    public boolean isOwnedBy(Integer sellerId) {
+    public boolean isNotOwnedBy(Long sellerId) {
         return seller != null && seller.getId().equals(sellerId);
     }
 }

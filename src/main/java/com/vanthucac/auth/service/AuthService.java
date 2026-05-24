@@ -86,7 +86,7 @@ public class AuthService {
         var activeToken = redisTokenService.findActiveToken(oldTokenHash);
         if (activeToken.isPresent()) {
             var data = activeToken.get();
-            var user = userRepository.findById(Integer.parseInt(data.userId()))
+            var user = userRepository.findById(Long.parseLong(data.userId()))
                     .orElseThrow(AuthException::refreshTokenInvalid);
 
             var newRawToken = tokenService.generateRefreshToken();
