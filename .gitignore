@@ -31,12 +31,9 @@ build/
 ### VS Code ###
 .vscode/
 
-# Sensitive config
-application-prod.yml
-
 # OS files
-.DS_Store           # macOS
-Thumbs.db           # Windows
+.DS_Store
+Thumbs.db
 
 # Log files
 *.log

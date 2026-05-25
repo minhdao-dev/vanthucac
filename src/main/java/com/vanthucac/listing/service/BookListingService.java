@@ -3,6 +3,7 @@ package com.vanthucac.listing.service;
 import com.vanthucac.catalog.entity.BookCatalog;
 import com.vanthucac.catalog.exception.CatalogException;
 import com.vanthucac.catalog.repository.BookCatalogRepository;
+import com.vanthucac.common.config.CacheConfig;
 import com.vanthucac.common.dto.PageResponse;
 import com.vanthucac.common.util.PageableUtils;
 import com.vanthucac.listing.dto.CreateListingRequest;
@@ -17,6 +18,9 @@ import com.vanthucac.listing.repository.ListingImageRepository;
 import com.vanthucac.seller.entity.SellerProfile;
 import com.vanthucac.seller.exception.SellerException;
 import com.vanthucac.seller.repository.SellerProfileRepository;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
@@ -45,17 +49,14 @@ public class BookListingService {
         this.sellerProfileRepository = sellerProfileRepository;
     }
 
+    @Cacheable(
+            value = CacheConfig.LISTINGS_CACHE,
+            key = "#bookId + '-' + #sellerId + '-' + #listingType + '-' + #condition + '-' + #minPrice + '-' + #maxPrice + '-' + #page + '-' + #size + '-' + #sort"
+    )
     @Transactional(readOnly = true)
     public PageResponse<ListingResponse> search(
-            Long bookId,
-            Long sellerId,
-            String listingType,
-            String condition,
-            BigDecimal minPrice,
-            BigDecimal maxPrice,
-            int page,
-            int size,
-            String sort
+            Long bookId, Long sellerId, String listingType, String condition,
+            BigDecimal minPrice, BigDecimal maxPrice, int page, int size, String sort
     ) {
         var pageable = PageableUtils.build(page, size, sort);
 
@@ -77,6 +78,7 @@ public class BookListingService {
         );
     }
 
+    @Cacheable(value = CacheConfig.LISTING_DETAIL_CACHE, key = "#id")
     @Transactional(readOnly = true)
     public ListingResponse getById(Long id) {
         var listing = bookListingRepository.findById(id)
@@ -85,27 +87,26 @@ public class BookListingService {
         return ListingResponse.from(listing, images);
     }
 
+    @CacheEvict(value = CacheConfig.LISTINGS_CACHE, allEntries = true)
     @Transactional
     public ListingResponse create(CreateListingRequest request, Jwt jwt) {
         var seller = getSellerFromJwt(jwt);
         var bookCatalog = getBookCatalog(request.bookCatalogId());
         var condition = parseCondition(request.condition());
 
-        var listing = BookListing.createC2C(
-                bookCatalog,
-                seller,
-                request.price(),
-                condition,
-                request.stock()
-        );
+        var listing = BookListing.createC2C(bookCatalog, seller, request.price(),
+                condition, request.stock());
         bookListingRepository.save(listing);
-
         saveImages(listing, request.imageUrls());
 
         var images = getImageUrls(listing.getId());
         return ListingResponse.from(listing, images);
     }
 
+    @Caching(evict = {
+            @CacheEvict(value = CacheConfig.LISTINGS_CACHE, allEntries = true),
+            @CacheEvict(value = CacheConfig.LISTING_DETAIL_CACHE, key = "#id")
+    })
     @Transactional
     public ListingResponse update(Long id, UpdateListingRequest request, Jwt jwt) {
         var listing = bookListingRepository.findById(id)
@@ -119,11 +120,9 @@ public class BookListingService {
         var condition = request.condition() != null
                 ? parseCondition(request.condition())
                 : listing.getCondition();
-
         var status = request.status() != null
                 ? parseStatus(request.status())
                 : listing.getStatus();
-
         var price = request.price() != null ? request.price() : listing.getPrice();
         var stock = request.stock() != null ? request.stock() : listing.getStock();
 
@@ -138,6 +137,10 @@ public class BookListingService {
         return ListingResponse.from(listing, images);
     }
 
+    @Caching(evict = {
+            @CacheEvict(value = CacheConfig.LISTINGS_CACHE, allEntries = true),
+            @CacheEvict(value = CacheConfig.LISTING_DETAIL_CACHE, key = "#id")
+    })
     @Transactional
     public void deactivate(Long id, Jwt jwt) {
         var listing = bookListingRepository.findById(id)
@@ -185,8 +188,7 @@ public class BookListingService {
     private void saveImages(BookListing listing, List<String> imageUrls) {
         if (imageUrls == null || imageUrls.isEmpty()) return;
         for (int i = 0; i < imageUrls.size(); i++) {
-            var image = ListingImage.create(listing, imageUrls.get(i), i);
-            listingImageRepository.save(image);
+            listingImageRepository.save(ListingImage.create(listing, imageUrls.get(i), i));
         }
     }
 
