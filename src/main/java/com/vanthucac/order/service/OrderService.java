@@ -4,6 +4,7 @@ import com.vanthucac.auth.repository.UserRepository;
 import com.vanthucac.cart.entity.CartItem;
 import com.vanthucac.cart.exception.CartException;
 import com.vanthucac.cart.repository.CartRepository;
+import com.vanthucac.common.config.CommissionProperties;
 import com.vanthucac.common.dto.PageResponse;
 import com.vanthucac.common.util.PageableUtils;
 import com.vanthucac.listing.entity.BookListing;
@@ -13,15 +14,18 @@ import com.vanthucac.listing.repository.ListingImageRepository;
 import com.vanthucac.order.dto.CheckoutRequest;
 import com.vanthucac.order.dto.OrderItemResponse;
 import com.vanthucac.order.dto.OrderResponse;
-import com.vanthucac.payment.entity.EscrowRecord;
 import com.vanthucac.order.entity.Order;
 import com.vanthucac.order.entity.OrderItem;
-import com.vanthucac.payment.entity.Payment;
 import com.vanthucac.order.exception.OrderException;
-import com.vanthucac.payment.repository.EscrowRecordRepository;
 import com.vanthucac.order.repository.OrderRepository;
+import com.vanthucac.payment.entity.EscrowRecord;
+import com.vanthucac.payment.entity.Payment;
+import com.vanthucac.payment.entity.PlatformCommission;
+import com.vanthucac.payment.repository.EscrowRecordRepository;
 import com.vanthucac.payment.repository.PaymentRepository;
+import com.vanthucac.payment.repository.PlatformCommissionRepository;
 import com.vanthucac.seller.entity.SellerProfile;
+import com.vanthucac.seller.repository.SellerWalletRepository;
 import com.vanthucac.user.exception.UserException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,6 +34,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -41,27 +46,36 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final PaymentRepository paymentRepository;
     private final EscrowRecordRepository escrowRecordRepository;
+    private final PlatformCommissionRepository platformCommissionRepository;
+    private final SellerWalletRepository sellerWalletRepository;
     private final CartRepository cartRepository;
     private final BookListingRepository bookListingRepository;
     private final ListingImageRepository listingImageRepository;
     private final UserRepository userRepository;
+    private final CommissionProperties commissionProperties;
 
     public OrderService(
             OrderRepository orderRepository,
             PaymentRepository paymentRepository,
             EscrowRecordRepository escrowRecordRepository,
+            PlatformCommissionRepository platformCommissionRepository,
+            SellerWalletRepository sellerWalletRepository,
             CartRepository cartRepository,
             BookListingRepository bookListingRepository,
             ListingImageRepository listingImageRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            CommissionProperties commissionProperties
     ) {
         this.orderRepository = orderRepository;
         this.paymentRepository = paymentRepository;
         this.escrowRecordRepository = escrowRecordRepository;
+        this.platformCommissionRepository = platformCommissionRepository;
+        this.sellerWalletRepository = sellerWalletRepository;
         this.cartRepository = cartRepository;
         this.bookListingRepository = bookListingRepository;
         this.listingImageRepository = listingImageRepository;
         this.userRepository = userRepository;
+        this.commissionProperties = commissionProperties;
     }
 
     @Transactional
@@ -228,10 +242,15 @@ public class OrderService {
         }
 
         order.complete();
-        order.getSubOrders().forEach(Order::complete);
+        order.getSubOrders().forEach(sub -> {
+            sub.complete();
 
-        log.info("Order {} completed — escrow release triggered for {} sub-orders",
-                order.getId(), order.getSubOrders().size());
+            if (sub.getOrderType() == Order.OrderType.C2C && sub.getSeller() != null) {
+                releaseEscrow(sub);
+            }
+        });
+
+        log.info("Order {} completed successfully", order.getId());
     }
 
     @Transactional
@@ -251,8 +270,52 @@ public class OrderService {
         order.cancel();
 
         if (order.isParentOrder()) {
-            order.getSubOrders().forEach(Order::cancel);
+            order.getSubOrders().forEach(sub -> {
+                sub.cancel();
+
+                if (sub.getOrderType() == Order.OrderType.C2C) {
+                    escrowRecordRepository.findByOrderId(sub.getId())
+                            .ifPresent(escrow -> {
+                                escrow.refund();
+                                log.info("Escrow refunded for sub-order {}", sub.getId());
+                            });
+                }
+            });
         }
+    }
+
+    private void releaseEscrow(Order subOrder) {
+        var escrow = escrowRecordRepository.findByOrderId(subOrder.getId())
+                .orElseThrow(() -> {
+                    log.error("Escrow not found for sub-order {}", subOrder.getId());
+                    return OrderException.orderNotFound();
+                });
+
+        var seller = subOrder.getSeller();
+        var totalAmount = subOrder.getTotalAmount();
+        var commissionRate = commissionProperties.rate();
+
+        var commissionAmount = totalAmount
+                .multiply(commissionRate)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        var netAmount = totalAmount.subtract(commissionAmount);
+
+        var commission = PlatformCommission.create(subOrder, seller, commissionAmount, commissionRate);
+        platformCommissionRepository.save(commission);
+
+        var wallet = sellerWalletRepository.findBySellerId(seller.getId())
+                .orElseThrow(() -> {
+                    log.error("Wallet not found for seller {}", seller.getId());
+                    return OrderException.orderNotFound();
+                });
+
+        wallet.credit(netAmount);
+
+        escrow.release();
+
+        log.info("Escrow released for sub-order {} — total: {}, commission: {}, net: {}",
+                subOrder.getId(), totalAmount, commissionAmount, netAmount);
     }
 
     private OrderResponse buildOrderResponse(Order order) {
