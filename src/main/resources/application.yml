@@ -12,3 +12,7 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+
+app:
+  commission:
+    rate: 0.05
