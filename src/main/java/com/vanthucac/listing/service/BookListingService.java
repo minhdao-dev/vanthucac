@@ -1,9 +1,9 @@
 package com.vanthucac.listing.service;
 
-import com.vanthucac.catalog.dto.PageResponse;
 import com.vanthucac.catalog.entity.BookCatalog;
 import com.vanthucac.catalog.exception.CatalogException;
 import com.vanthucac.catalog.repository.BookCatalogRepository;
+import com.vanthucac.common.dto.PageResponse;
 import com.vanthucac.common.util.PageableUtils;
 import com.vanthucac.listing.dto.CreateListingRequest;
 import com.vanthucac.listing.dto.ListingResponse;
@@ -45,6 +45,7 @@ public class BookListingService {
         this.sellerProfileRepository = sellerProfileRepository;
     }
 
+    @Transactional(readOnly = true)
     public PageResponse<ListingResponse> search(
             Long bookId,
             Long sellerId,
@@ -67,7 +68,7 @@ public class BookListingService {
                 BookListingSpecification.hasPriceBetween(minPrice, maxPrice)
         );
 
-        return com.vanthucac.catalog.dto.PageResponse.from(
+        return PageResponse.from(
                 bookListingRepository.findAll(spec, pageable)
                         .map(listing -> {
                             var images = getImageUrls(listing.getId());
@@ -76,6 +77,7 @@ public class BookListingService {
         );
     }
 
+    @Transactional(readOnly = true)
     public ListingResponse getById(Long id) {
         var listing = bookListingRepository.findById(id)
                 .orElseThrow(ListingException::listingNotFound);

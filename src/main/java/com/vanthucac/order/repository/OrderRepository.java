@@ -12,6 +12,12 @@ import java.util.Optional;
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
+    @EntityGraph(attributePaths = {
+            "items", "items.listing", "items.listing.bookCatalog",
+            "seller", "subOrders", "subOrders.items",
+            "subOrders.items.listing", "subOrders.items.listing.bookCatalog",
+            "subOrders.seller"
+    })
     Page<Order> findByUserIdAndParentOrderIsNull(Long userId, Pageable pageable);
 
     @EntityGraph(attributePaths = {

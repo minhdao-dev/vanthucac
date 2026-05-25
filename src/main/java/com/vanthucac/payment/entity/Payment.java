@@ -1,5 +1,6 @@
-package com.vanthucac.order.entity;
+package com.vanthucac.payment.entity;
 
+import com.vanthucac.order.entity.Order;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;

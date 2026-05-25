@@ -5,22 +5,22 @@ import com.vanthucac.seller.dto.SellerProfileResponse;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.Set;
+import java.util.List;
 
 public record OrderResponse(
         Long id,
         Long parentOrderId,
         SellerProfileResponse seller,
-        Set<OrderItemResponse> items,
+        List<OrderItemResponse> items,
         BigDecimal totalAmount,
         String status,
         String orderType,
         String shippingAddress,
-        Set<OrderResponse> subOrders,
+        List<OrderResponse> subOrders,
         Instant createdAt
 ) {
-    public static OrderResponse fromParent(Order order, Set<OrderItemResponse> items,
-                                           Set<OrderResponse> subOrders) {
+    public static OrderResponse fromParent(Order order, List<OrderItemResponse> items,
+                                           List<OrderResponse> subOrders) {
         return new OrderResponse(
                 order.getId(),
                 null,
@@ -35,7 +35,7 @@ public record OrderResponse(
         );
     }
 
-    public static OrderResponse fromSub(Order order, Set<OrderItemResponse> items) {
+    public static OrderResponse fromSub(Order order, List<OrderItemResponse> items) {
         return new OrderResponse(
                 order.getId(),
                 order.getParentOrder().getId(),
@@ -47,7 +47,7 @@ public record OrderResponse(
                 order.getStatus().name(),
                 order.getOrderType().name(),
                 order.getShippingAddress(),
-                Set.of(),
+                List.of(),
                 order.getCreatedAt()
         );
     }
