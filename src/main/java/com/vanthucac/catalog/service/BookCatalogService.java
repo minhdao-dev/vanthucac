@@ -2,11 +2,11 @@ package com.vanthucac.catalog.service;
 
 import com.vanthucac.catalog.dto.BookCatalogResponse;
 import com.vanthucac.catalog.dto.CreateBookRequest;
-import com.vanthucac.catalog.dto.PageResponse;
 import com.vanthucac.catalog.entity.BookCatalog;
 import com.vanthucac.catalog.exception.CatalogException;
 import com.vanthucac.catalog.repository.BookCatalogRepository;
 import com.vanthucac.catalog.repository.BookCatalogSpecification;
+import com.vanthucac.common.dto.PageResponse;
 import com.vanthucac.common.util.PageableUtils;
 import com.vanthucac.infrastructure.external.GoogleBooksApiClient;
 import org.springframework.data.jpa.domain.Specification;
@@ -27,6 +27,7 @@ public class BookCatalogService {
         this.googleBooksApiClient = googleBooksApiClient;
     }
 
+    @Transactional(readOnly = true)
     public PageResponse<BookCatalogResponse> search(
             String keyword,
             String category,
@@ -47,12 +48,14 @@ public class BookCatalogService {
         );
     }
 
+    @Transactional(readOnly = true)
     public BookCatalogResponse getById(Long id) {
         return bookCatalogRepository.findById(id)
                 .map(BookCatalogResponse::from)
                 .orElseThrow(CatalogException::bookNotFound);
     }
 
+    @Transactional
     public BookCatalogResponse lookupByIsbn(String isbn) {
         var existing = bookCatalogRepository.findByIsbn(isbn);
         if (existing.isPresent()) {

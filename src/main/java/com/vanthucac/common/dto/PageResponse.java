@@ -1,4 +1,4 @@
-package com.vanthucac.catalog.dto;
+package com.vanthucac.common.dto;
 
 import org.springframework.data.domain.Page;
 

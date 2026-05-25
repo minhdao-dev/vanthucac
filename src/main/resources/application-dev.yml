@@ -14,6 +14,18 @@ spring:
       host: localhost
       port: 6379
 
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
 springdoc:
   api-docs:
     path: /api-docs
@@ -24,7 +36,7 @@ springdoc:
 
 app:
   jwt:
-    secret: "d4ColNI6glOvBFa7qOp/Y51yIh3wYAsnVv+qNEwrHpTwRKGGBapfzuureEfConR3xkDH2QzpsEN/4fpgpwRc5w=="
+    secret: ${JWT_SECRET}
     expiration: 900
   google-books:
     api-key: ${GOOGLE_BOOKS_API_KEY}

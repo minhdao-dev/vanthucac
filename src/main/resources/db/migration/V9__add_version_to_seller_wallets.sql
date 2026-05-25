@@ -1,0 +1,2 @@
+ALTER TABLE seller_wallets
+    ADD COLUMN version INT NOT NULL DEFAULT 0;
