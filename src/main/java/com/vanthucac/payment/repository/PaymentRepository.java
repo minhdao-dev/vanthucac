@@ -1,6 +1,6 @@
-package com.vanthucac.order.repository;
+package com.vanthucac.payment.repository;
 
-import com.vanthucac.order.entity.Payment;
+import com.vanthucac.payment.entity.Payment;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

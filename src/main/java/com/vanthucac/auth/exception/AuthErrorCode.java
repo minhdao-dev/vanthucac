@@ -10,5 +10,4 @@ public final class AuthErrorCode {
     public static final String REFRESH_TOKEN_INVALID = "AUTH_REFRESH_TOKEN_INVALID";
     public static final String REFRESH_TOKEN_EXPIRED = "AUTH_REFRESH_TOKEN_EXPIRED";
     public static final String REFRESH_TOKEN_REUSED = "AUTH_REFRESH_TOKEN_REUSED";
-    public static final String ALREADY_SELLER = "USER_ALREADY_SELLER";
 }

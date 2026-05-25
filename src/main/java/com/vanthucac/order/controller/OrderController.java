@@ -1,6 +1,6 @@
 package com.vanthucac.order.controller;
 
-import com.vanthucac.catalog.dto.PageResponse;
+import com.vanthucac.common.dto.PageResponse;
 import com.vanthucac.common.dto.ApiResponse;
 import com.vanthucac.order.dto.CheckoutRequest;
 import com.vanthucac.order.dto.OrderResponse;

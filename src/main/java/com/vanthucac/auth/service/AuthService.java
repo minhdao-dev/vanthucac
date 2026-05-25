@@ -63,7 +63,6 @@ public class AuthService {
         return UserProfileResponse.from(user);
     }
 
-    @Transactional(readOnly = true)
     public TokenResponse login(LoginRequest request, String deviceInfo) {
         var user = userRepository.findByEmail(request.email())
                 .orElseThrow(AuthException::invalidCredentials);

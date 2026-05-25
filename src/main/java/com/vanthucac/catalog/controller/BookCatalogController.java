@@ -2,7 +2,7 @@ package com.vanthucac.catalog.controller;
 
 import com.vanthucac.catalog.dto.BookCatalogResponse;
 import com.vanthucac.catalog.dto.CreateBookRequest;
-import com.vanthucac.catalog.dto.PageResponse;
+import com.vanthucac.common.dto.PageResponse;
 import com.vanthucac.catalog.service.BookCatalogService;
 import com.vanthucac.common.dto.ApiResponse;
 import jakarta.validation.Valid;
