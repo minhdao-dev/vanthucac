@@ -21,9 +21,11 @@ public interface AuctionSessionRepository extends JpaRepository<AuctionSession, 
     @EntityGraph(attributePaths = {"items", "items.bookCatalog", "items.winner"})
     Optional<AuctionSession> findWithItemsById(Long id);
 
+    @EntityGraph(attributePaths = {"items"})
     List<AuctionSession> findByStatusAndStartTimeBefore(
             AuctionSession.SessionStatus status, Instant now);
 
+    @EntityGraph(attributePaths = {"items", "items.bookCatalog", "items.winner"})
     List<AuctionSession> findByStatusAndEndTimeBefore(
             AuctionSession.SessionStatus status, Instant now);
 }

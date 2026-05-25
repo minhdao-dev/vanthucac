@@ -28,6 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class BookListingService {
@@ -69,12 +71,17 @@ public class BookListingService {
                 BookListingSpecification.hasPriceBetween(minPrice, maxPrice)
         );
 
+        var listingsPage = bookListingRepository.findAll(spec, pageable);
+
+        var imagesByListingId = batchLoadImages(
+                listingsPage.getContent().stream().map(BookListing::getId).toList()
+        );
+
         return PageResponse.from(
-                bookListingRepository.findAll(spec, pageable)
-                        .map(listing -> {
-                            var images = getImageUrls(listing.getId());
-                            return ListingResponse.from(listing, images);
-                        })
+                listingsPage.map(listing -> ListingResponse.from(
+                        listing,
+                        imagesByListingId.getOrDefault(listing.getId(), List.of())
+                ))
         );
     }
 
@@ -154,6 +161,27 @@ public class BookListingService {
         listing.deactivate();
     }
 
+    private Map<Long, List<String>> batchLoadImages(List<Long> listingIds) {
+        if (listingIds.isEmpty()) {
+            return Map.of();
+        }
+        return listingImageRepository
+                .findByListingIdInOrderBySortOrder(listingIds)
+                .stream()
+                .collect(Collectors.groupingBy(
+                        img -> img.getListing().getId(),
+                        Collectors.mapping(ListingImage::getImageUrl, Collectors.toList())
+                ));
+    }
+
+    private List<String> getImageUrls(Long listingId) {
+        return listingImageRepository
+                .findByListingIdOrderBySortOrder(listingId)
+                .stream()
+                .map(ListingImage::getImageUrl)
+                .toList();
+    }
+
     private SellerProfile getSellerFromJwt(Jwt jwt) {
         var userId = Long.parseLong(jwt.getSubject());
         return sellerProfileRepository.findByUserId(userId)
@@ -190,13 +218,5 @@ public class BookListingService {
         for (int i = 0; i < imageUrls.size(); i++) {
             listingImageRepository.save(ListingImage.create(listing, imageUrls.get(i), i));
         }
-    }
-
-    private List<String> getImageUrls(Long listingId) {
-        return listingImageRepository
-                .findByListingIdOrderBySortOrder(listingId)
-                .stream()
-                .map(ListingImage::getImageUrl)
-                .toList();
     }
 }

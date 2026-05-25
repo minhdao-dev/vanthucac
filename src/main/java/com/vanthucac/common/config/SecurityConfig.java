@@ -36,7 +36,8 @@ public class SecurityConfig {
     @Value("${app.jwt.secret}")
     private String jwtSecret;
 
-    public SecurityConfig(AuthEntryPoint authEntryPoint, CustomAccessDeniedHandler accessDeniedHandler) {
+    public SecurityConfig(AuthEntryPoint authEntryPoint,
+                          CustomAccessDeniedHandler accessDeniedHandler) {
         this.authEntryPoint = authEntryPoint;
         this.accessDeniedHandler = accessDeniedHandler;
     }
@@ -52,14 +53,15 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/login",
-                                "/api/v1/auth/refresh",
-                                "/api/v1/books/**",
-                                "/api/v1/listings/**",
-                                "/api/v1/auction-sessions/**",
-                                "/api/v1/auction-items/*/bids",
-                                "/api-docs/**",
-                                "/swagger-ui/**"
+                                "/api/v1/auth/refresh"
                         ).permitAll()
+
+                        .requestMatchers(HttpMethod.GET, "/api/v1/books/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/listings/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/auction-sessions/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/auction-items/*/bids").permitAll()
+
+                        .requestMatchers("/api-docs/**", "/swagger-ui/**").permitAll()
 
                         .requestMatchers("/api/v1/users/me/seller/wallet").hasRole("SELLER")
                         .requestMatchers(HttpMethod.POST, "/api/v1/listings").hasRole("SELLER")
@@ -67,8 +69,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/listings/*").hasRole("SELLER")
                         .requestMatchers(HttpMethod.PUT, "/api/v1/orders/*/confirm").hasRole("SELLER")
 
-                        .requestMatchers("/api/v1/auction-sessions").hasRole("ADMIN")
-                        .requestMatchers("/api/v1/auction-sessions/*/items").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/books").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/books/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auction-sessions").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auction-sessions/*/items").hasRole("ADMIN")
 
                         .anyRequest().authenticated()
                 )
@@ -99,9 +103,7 @@ public class SecurityConfig {
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         var authoritiesConverter = new JwtGrantedAuthoritiesConverter();
-
         authoritiesConverter.setAuthoritiesClaimName("roles");
-
         authoritiesConverter.setAuthorityPrefix("ROLE_");
 
         var converter = new JwtAuthenticationConverter();
