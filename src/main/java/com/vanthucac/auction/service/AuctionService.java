@@ -11,17 +11,17 @@ import com.vanthucac.auction.repository.BidRepository;
 import com.vanthucac.auth.repository.UserRepository;
 import com.vanthucac.catalog.repository.BookCatalogRepository;
 import com.vanthucac.common.dto.PageResponse;
-import com.vanthucac.common.exception.BusinessException;
 import com.vanthucac.common.util.PageableUtils;
 import com.vanthucac.notification.service.EmailNotificationService;
 import com.vanthucac.user.exception.UserException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Instant;
 
@@ -63,9 +63,7 @@ public class AuctionService {
                 .orElseThrow(UserException::userNotFound);
 
         if (request.endTime().isBefore(request.startTime())) {
-            throw new BusinessException("End time must be after start time",
-                    "AUCTION_INVALID_TIME", org.springframework.http.HttpStatus.BAD_REQUEST) {
-            };
+            throw AuctionException.invalidTime();
         }
 
         var session = AuctionSession.create(
@@ -89,9 +87,7 @@ public class AuctionService {
         }
 
         var bookCatalog = bookCatalogRepository.findById(request.bookCatalogId())
-                .orElseThrow(() -> new BusinessException("Book not found",
-                        "CATALOG_BOOK_NOT_FOUND", org.springframework.http.HttpStatus.NOT_FOUND) {
-                });
+                .orElseThrow(AuctionException::itemNotFound);
 
         var item = AuctionItem.create(session, bookCatalog,
                 request.startingPrice(), request.minBidIncrement());
@@ -131,7 +127,7 @@ public class AuctionService {
         var user = userRepository.findById(userId)
                 .orElseThrow(UserException::userNotFound);
 
-        var item = auctionItemRepository.findById(itemId)
+        var item = auctionItemRepository.findByIdWithLock(itemId)
                 .orElseThrow(AuctionException::itemNotFound);
 
         if (!item.getSession().isActive()) {
@@ -146,23 +142,26 @@ public class AuctionService {
         var bid = Bid.create(item, user, request.amount());
         bidRepository.save(bid);
 
-        try {
-            item.placeBid(request.amount(), user);
-        } catch (ObjectOptimisticLockingFailureException e) {
-            throw AuctionException.bidConflict();
-        }
+        item.placeBid(request.amount(), user);
 
-        var broadcastMessage = new BidBroadcastMessage(
+        log.info("Bid placed on item {} by user {} — amount {}",
+                itemId, userId, request.amount());
+
+        final var broadcastMessage = new BidBroadcastMessage(
                 itemId,
                 request.amount(),
                 userId,
                 user.getFullName(),
                 Instant.now()
         );
-        messagingTemplate.convertAndSend("/topic/auction/" + itemId, broadcastMessage);
 
-        log.info("Bid placed on item {} by user {} — amount {}",
-                itemId, userId, request.amount());
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                messagingTemplate.convertAndSend("/topic/auction/" + itemId, broadcastMessage);
+                log.debug("Broadcast sent for item {} after transaction commit", itemId);
+            }
+        });
 
         return BidResponse.from(bid);
     }

@@ -30,7 +30,7 @@ public class AuctionException extends BusinessException {
     }
 
     public static AuctionException bidTooLow(String minAmount) {
-        return new AuctionException("Bid amount must be greater than " + minAmount,
+        return new AuctionException("Bid amount must be at least " + minAmount,
                 AuctionErrorCode.BID_TOO_LOW, HttpStatus.BAD_REQUEST);
     }
 
@@ -42,5 +42,10 @@ public class AuctionException extends BusinessException {
     public static AuctionException bidConflict() {
         return new AuctionException("Another bid was placed simultaneously, please try again",
                 AuctionErrorCode.BID_CONFLICT, HttpStatus.CONFLICT);
+    }
+
+    public static AuctionException invalidTime() {
+        return new AuctionException("End time must be after start time",
+                AuctionErrorCode.INVALID_TIME, HttpStatus.BAD_REQUEST);
     }
 }

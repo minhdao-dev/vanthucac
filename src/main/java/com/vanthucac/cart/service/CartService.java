@@ -17,6 +17,9 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 @Service
 public class CartService {
 
@@ -99,15 +102,29 @@ public class CartService {
     }
 
     private CartResponse toCartResponse(Cart cart) {
-        var itemResponses = cart.getItems().stream()
-                .map(item -> {
-                    var images = listingImageRepository
-                            .findByListingIdOrderBySortOrder(item.getListing().getId())
-                            .stream()
-                            .map(ListingImage::getImageUrl)
-                            .toList();
-                    return CartItemResponse.from(item, images);
-                })
+        var items = cart.getItems();
+
+        if (items.isEmpty()) {
+            return CartResponse.from(cart, List.of());
+        }
+
+        var listingIds = items.stream()
+                .map(item -> item.getListing().getId())
+                .toList();
+
+        var imagesByListingId = listingImageRepository
+                .findByListingIdInOrderBySortOrder(listingIds)
+                .stream()
+                .collect(Collectors.groupingBy(
+                        img -> img.getListing().getId(),
+                        Collectors.mapping(ListingImage::getImageUrl, Collectors.toList())
+                ));
+
+        var itemResponses = items.stream()
+                .map(item -> CartItemResponse.from(
+                        item,
+                        imagesByListingId.getOrDefault(item.getListing().getId(), List.of())
+                ))
                 .toList();
 
         return CartResponse.from(cart, itemResponses);

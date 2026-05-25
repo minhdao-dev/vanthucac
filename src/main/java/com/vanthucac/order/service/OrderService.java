@@ -235,9 +235,11 @@ public class OrderService {
             throw OrderException.invalidStatusTransition();
         }
 
-        var allConfirmed = order.getSubOrders().stream()
-                .allMatch(sub -> sub.getStatus() == Order.OrderStatus.CONFIRMED);
-        if (!allConfirmed) {
+        var allReadyToComplete = order.getSubOrders().stream()
+                .allMatch(sub -> sub.getOrderType() == Order.OrderType.B2C
+                        || sub.getStatus() == Order.OrderStatus.CONFIRMED);
+
+        if (!allReadyToComplete) {
             throw OrderException.invalidStatusTransition();
         }
 
@@ -311,7 +313,6 @@ public class OrderService {
                 });
 
         wallet.credit(netAmount);
-
         escrow.release();
 
         log.info("Escrow released for sub-order {} — total: {}, commission: {}, net: {}",
@@ -330,15 +331,27 @@ public class OrderService {
     }
 
     private List<OrderItemResponse> buildItemResponses(Set<OrderItem> items) {
+        if (items.isEmpty()) {
+            return List.of();
+        }
+
+        var listingIds = items.stream()
+                .map(item -> item.getListing().getId())
+                .toList();
+
+        var imagesByListingId = listingImageRepository
+                .findByListingIdInOrderBySortOrder(listingIds)
+                .stream()
+                .collect(Collectors.groupingBy(
+                        img -> img.getListing().getId(),
+                        Collectors.mapping(ListingImage::getImageUrl, Collectors.toList())
+                ));
+
         return items.stream()
-                .map(item -> {
-                    var images = listingImageRepository
-                            .findByListingIdOrderBySortOrder(item.getListing().getId())
-                            .stream()
-                            .map(ListingImage::getImageUrl)
-                            .toList();
-                    return OrderItemResponse.from(item, images);
-                })
+                .map(item -> OrderItemResponse.from(
+                        item,
+                        imagesByListingId.getOrDefault(item.getListing().getId(), List.of())
+                ))
                 .toList();
     }
 

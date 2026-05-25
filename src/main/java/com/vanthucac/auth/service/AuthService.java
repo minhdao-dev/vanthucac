@@ -55,7 +55,8 @@ public class AuthService {
         }
 
         var buyerRole = roleRepository.findByName(Role.RoleName.BUYER)
-                .orElseThrow(() -> new IllegalStateException("Role BUYER not found — check V1 migration"));
+                .orElseThrow(() -> new IllegalStateException(
+                        "Role BUYER not found — check V1 migration"));
 
         user.addRole(buyerRole);
         userRepository.save(user);
@@ -67,7 +68,9 @@ public class AuthService {
         var user = userRepository.findByEmail(request.email())
                 .orElseThrow(AuthException::invalidCredentials);
 
-        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+        var passwordMatches = passwordEncoder.matches(request.password(), user.getPasswordHash());
+
+        if (!passwordMatches) {
             throw AuthException.invalidCredentials();
         }
 
