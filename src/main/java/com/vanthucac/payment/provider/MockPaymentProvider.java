@@ -11,7 +11,7 @@ public class MockPaymentProvider implements PaymentProvider {
     @Override
     public PaymentIntent createPaymentIntent(PaymentIntentRequest request) {
         var providerPaymentId = "mock_" + UUID.randomUUID();
-        var checkoutUrl = "/api/v1/payments/orders/" + request.orderId() + "/mock-complete";
+        var checkoutUrl = "/api/v1/payments/mock/callback?providerPaymentId=" + providerPaymentId;
         return new PaymentIntent(Payment.PaymentMethod.MOCK, providerPaymentId, checkoutUrl);
     }
 
