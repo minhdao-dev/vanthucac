@@ -206,10 +206,6 @@ public class OrderService {
             throw OrderException.accessDenied();
         }
 
-        if (order.getStatus() != Order.OrderStatus.PENDING) {
-            throw OrderException.invalidStatusTransition();
-        }
-
         paymentService.ensureOrderPaymentCompleted(order.getParentOrder().getId());
 
         order.confirm();
