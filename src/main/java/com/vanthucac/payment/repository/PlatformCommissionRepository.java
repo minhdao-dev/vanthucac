@@ -6,4 +6,6 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface PlatformCommissionRepository extends JpaRepository<PlatformCommission, Long> {
+
+    boolean existsByOrderId(Long orderId);
 }

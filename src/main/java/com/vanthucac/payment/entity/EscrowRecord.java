@@ -54,10 +54,34 @@ public class EscrowRecord {
     }
 
     public void release() {
+        if (isReleased()) {
+            return;
+        }
+        if (isNotHolding()) {
+            throw new IllegalStateException("Escrow cannot be released from status " + status);
+        }
         this.status = EscrowStatus.RELEASED;
     }
 
     public void refund() {
+        if (isRefunded()) {
+            return;
+        }
+        if (isNotHolding()) {
+            throw new IllegalStateException("Escrow cannot be refunded from status " + status);
+        }
         this.status = EscrowStatus.REFUNDED;
+    }
+
+    public boolean isNotHolding() {
+        return status != EscrowStatus.HOLDING;
+    }
+
+    public boolean isReleased() {
+        return status == EscrowStatus.RELEASED;
+    }
+
+    public boolean isRefunded() {
+        return status == EscrowStatus.REFUNDED;
     }
 }

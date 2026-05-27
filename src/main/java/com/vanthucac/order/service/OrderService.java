@@ -24,7 +24,9 @@ import com.vanthucac.payment.repository.EscrowRecordRepository;
 import com.vanthucac.payment.repository.PlatformCommissionRepository;
 import com.vanthucac.payment.service.PaymentService;
 import com.vanthucac.seller.entity.SellerProfile;
+import com.vanthucac.seller.entity.WalletTransaction;
 import com.vanthucac.seller.repository.SellerWalletRepository;
+import com.vanthucac.seller.repository.WalletTransactionRepository;
 import com.vanthucac.user.exception.UserException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,12 +43,14 @@ import java.util.stream.Collectors;
 public class OrderService {
 
     private static final Logger log = LoggerFactory.getLogger(OrderService.class);
+    private static final String WALLET_REFERENCE_ORDER = "ORDER";
 
     private final OrderRepository orderRepository;
     private final PaymentService paymentService;
     private final EscrowRecordRepository escrowRecordRepository;
     private final PlatformCommissionRepository platformCommissionRepository;
     private final SellerWalletRepository sellerWalletRepository;
+    private final WalletTransactionRepository walletTransactionRepository;
     private final CartRepository cartRepository;
     private final BookListingRepository bookListingRepository;
     private final ListingImageRepository listingImageRepository;
@@ -59,6 +63,7 @@ public class OrderService {
             EscrowRecordRepository escrowRecordRepository,
             PlatformCommissionRepository platformCommissionRepository,
             SellerWalletRepository sellerWalletRepository,
+            WalletTransactionRepository walletTransactionRepository,
             CartRepository cartRepository,
             BookListingRepository bookListingRepository,
             ListingImageRepository listingImageRepository,
@@ -70,6 +75,7 @@ public class OrderService {
         this.escrowRecordRepository = escrowRecordRepository;
         this.platformCommissionRepository = platformCommissionRepository;
         this.sellerWalletRepository = sellerWalletRepository;
+        this.walletTransactionRepository = walletTransactionRepository;
         this.cartRepository = cartRepository;
         this.bookListingRepository = bookListingRepository;
         this.listingImageRepository = listingImageRepository;
@@ -271,6 +277,9 @@ public class OrderService {
                 if (sub.getOrderType() == Order.OrderType.C2C) {
                     escrowRecordRepository.findByOrderId(sub.getId())
                             .ifPresent(escrow -> {
+                                if (escrow.isNotHolding()) {
+                                    throw OrderException.invalidStatusTransition();
+                                }
                                 escrow.refund();
                                 log.info("Escrow refunded for sub-order {}", sub.getId());
                             });
@@ -314,6 +323,15 @@ public class OrderService {
                     return OrderException.orderNotFound();
                 });
 
+        if (escrow.isReleased()) {
+            log.info("Escrow already released for sub-order {}", subOrder.getId());
+            return;
+        }
+
+        if (escrow.isNotHolding()) {
+            throw OrderException.invalidStatusTransition();
+        }
+
         var seller = subOrder.getSeller();
         var totalAmount = subOrder.getTotalAmount();
         var commissionRate = commissionProperties.rate();
@@ -324,8 +342,10 @@ public class OrderService {
 
         var netAmount = totalAmount.subtract(commissionAmount);
 
-        var commission = PlatformCommission.create(subOrder, seller, commissionAmount, commissionRate);
-        platformCommissionRepository.save(commission);
+        if (!platformCommissionRepository.existsByOrderId(subOrder.getId())) {
+            var commission = PlatformCommission.create(subOrder, seller, commissionAmount, commissionRate);
+            platformCommissionRepository.save(commission);
+        }
 
         var wallet = sellerWalletRepository.findBySellerId(seller.getId())
                 .orElseThrow(() -> {
@@ -333,7 +353,33 @@ public class OrderService {
                     return OrderException.orderNotFound();
                 });
 
+        var transactionExists = walletTransactionRepository.existsByWalletIdAndTypeAndReferenceTypeAndReferenceId(
+                wallet.getId(),
+                WalletTransaction.TransactionType.ESCROW_RELEASE,
+                WALLET_REFERENCE_ORDER,
+                subOrder.getId()
+        );
+
+        if (transactionExists) {
+            throw OrderException.invalidStatusTransition();
+        }
+
+        var balanceBefore = wallet.getBalance();
         wallet.credit(netAmount);
+        var balanceAfter = wallet.getBalance();
+
+        var walletTransaction = WalletTransaction.create(
+                wallet,
+                WalletTransaction.TransactionType.ESCROW_RELEASE,
+                netAmount,
+                balanceBefore,
+                balanceAfter,
+                WALLET_REFERENCE_ORDER,
+                subOrder.getId(),
+                "Escrow released for order " + subOrder.getId()
+        );
+        walletTransactionRepository.save(walletTransaction);
+
         escrow.release();
 
         log.info("Escrow released for sub-order {} — total: {}, commission: {}, net: {}",
