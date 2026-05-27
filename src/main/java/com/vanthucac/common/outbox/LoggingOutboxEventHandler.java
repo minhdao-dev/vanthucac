@@ -17,7 +17,7 @@ public class LoggingOutboxEventHandler implements OutboxEventHandler {
     @Override
     public void handle(OutboxEvent event) {
         log.info(
-                "Outbox event handled — id: {}, type: {}, aggregate: {}#{}, payload: {}",
+                "Outbox event handled by fallback logger — id: {}, type: {}, aggregate: {}#{}, payload: {}",
                 event.getId(),
                 event.getEventType(),
                 event.getAggregateType(),
