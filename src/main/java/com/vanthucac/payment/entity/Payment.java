@@ -117,4 +117,8 @@ public class Payment {
     public boolean isPayable() {
         return status == PaymentStatus.PENDING || status == PaymentStatus.PROCESSING;
     }
+
+    public boolean isMockPayment() {
+        return paymentMethod == PaymentMethod.MOCK;
+    }
 }

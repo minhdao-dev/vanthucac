@@ -1,8 +1,10 @@
 package com.vanthucac.payment.controller;
 
 import com.vanthucac.common.dto.ApiResponse;
+import com.vanthucac.payment.dto.MockPaymentCallbackRequest;
 import com.vanthucac.payment.dto.PaymentResponse;
 import com.vanthucac.payment.service.PaymentService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -34,5 +36,13 @@ public class PaymentController {
     ) {
         var payment = paymentService.completeMockPayment(orderId, jwt);
         return ResponseEntity.ok(ApiResponse.ok("Payment completed successfully", payment));
+    }
+
+    @PostMapping("/mock/callback")
+    public ResponseEntity<ApiResponse<PaymentResponse>> handleMockCallback(
+            @Valid @RequestBody MockPaymentCallbackRequest request
+    ) {
+        var payment = paymentService.handleMockCallback(request);
+        return ResponseEntity.ok(ApiResponse.ok("Payment callback processed successfully", payment));
     }
 }
