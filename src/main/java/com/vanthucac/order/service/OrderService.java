@@ -19,12 +19,10 @@ import com.vanthucac.order.entity.Order;
 import com.vanthucac.order.entity.OrderItem;
 import com.vanthucac.order.exception.OrderException;
 import com.vanthucac.order.repository.OrderRepository;
-import com.vanthucac.payment.entity.EscrowRecord;
-import com.vanthucac.payment.entity.Payment;
 import com.vanthucac.payment.entity.PlatformCommission;
 import com.vanthucac.payment.repository.EscrowRecordRepository;
-import com.vanthucac.payment.repository.PaymentRepository;
 import com.vanthucac.payment.repository.PlatformCommissionRepository;
+import com.vanthucac.payment.service.PaymentService;
 import com.vanthucac.seller.entity.SellerProfile;
 import com.vanthucac.seller.repository.SellerWalletRepository;
 import com.vanthucac.user.exception.UserException;
@@ -45,7 +43,7 @@ public class OrderService {
     private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 
     private final OrderRepository orderRepository;
-    private final PaymentRepository paymentRepository;
+    private final PaymentService paymentService;
     private final EscrowRecordRepository escrowRecordRepository;
     private final PlatformCommissionRepository platformCommissionRepository;
     private final SellerWalletRepository sellerWalletRepository;
@@ -57,7 +55,7 @@ public class OrderService {
 
     public OrderService(
             OrderRepository orderRepository,
-            PaymentRepository paymentRepository,
+            PaymentService paymentService,
             EscrowRecordRepository escrowRecordRepository,
             PlatformCommissionRepository platformCommissionRepository,
             SellerWalletRepository sellerWalletRepository,
@@ -68,7 +66,7 @@ public class OrderService {
             CommissionProperties commissionProperties
     ) {
         this.orderRepository = orderRepository;
-        this.paymentRepository = paymentRepository;
+        this.paymentService = paymentService;
         this.escrowRecordRepository = escrowRecordRepository;
         this.platformCommissionRepository = platformCommissionRepository;
         this.sellerWalletRepository = sellerWalletRepository;
@@ -153,16 +151,9 @@ public class OrderService {
                 subOrder.getItems().add(orderItem);
             }
             orderRepository.save(subOrder);
-
-            if (subOrderType == Order.OrderType.C2C) {
-                var escrow = EscrowRecord.create(subOrder, subTotal);
-                escrowRecordRepository.save(escrow);
-                log.info("Escrow created for sub-order {} — amount {}", subOrder.getId(), subTotal);
-            }
         }
 
-        var payment = Payment.createMock(parentOrder, grandTotal);
-        paymentRepository.save(payment);
+        paymentService.createPaymentIntent(parentOrder, grandTotal);
 
         cartRepository.delete(cart);
         log.info("Order {} created for user {}", parentOrder.getId(), userId);
@@ -219,6 +210,8 @@ public class OrderService {
             throw OrderException.invalidStatusTransition();
         }
 
+        paymentService.ensureOrderPaymentCompleted(order.getParentOrder().getId());
+
         order.confirm();
     }
 
@@ -235,6 +228,8 @@ public class OrderService {
         if (!order.isParentOrder()) {
             throw OrderException.invalidStatusTransition();
         }
+
+        paymentService.ensureOrderPaymentCompleted(order.getId());
 
         var allReadyToComplete = order.getSubOrders().stream()
                 .allMatch(sub -> sub.getOrderType() == Order.OrderType.B2C
@@ -273,6 +268,7 @@ public class OrderService {
         order.cancel();
 
         if (order.isParentOrder()) {
+            paymentService.cancelPaymentIfUnpaid(order.getId());
             order.getSubOrders().forEach(sub -> {
                 sub.cancel();
 
