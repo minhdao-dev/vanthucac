@@ -9,7 +9,6 @@ import com.vanthucac.notification.exception.NotificationException;
 import com.vanthucac.notification.repository.NotificationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,7 +26,10 @@ public class NotificationService {
 
     @Transactional(readOnly = true)
     public PageResponse<NotificationResponse> getMyNotifications(
-            boolean unreadOnly, int page, int size, Jwt jwt
+            boolean unreadOnly,
+            int page,
+            int size,
+            Jwt jwt
     ) {
         var userId = extractUserId(jwt);
         var pageable = PageableUtils.build(page, size, "createdAt,desc");
@@ -62,46 +64,16 @@ public class NotificationService {
         notificationRepository.markAllAsRead(extractUserId(jwt));
     }
 
-    @Async
     @Transactional
-    public void notifyAuctionWon(User winner, String bookTitle) {
-        send(winner, Notification.NotificationType.AUCTION_WON,
-                "Bạn đã thắng đấu giá!",
-                "Chúc mừng! Bạn đã thắng phiên đấu giá cho cuốn \"" + bookTitle + "\".");
-    }
-
-    @Async
-    @Transactional
-    public void notifyAuctionOutbid(User previousWinner, String bookTitle) {
-        send(previousWinner, Notification.NotificationType.AUCTION_OUTBID,
-                "Bạn đã bị outbid",
-                "Ai đó vừa đặt giá cao hơn bạn cho cuốn \"" + bookTitle + "\". Đặt lại ngay!");
-    }
-
-    @Async
-    @Transactional
-    public void notifyListingApproved(User seller, Long listingId) {
-        send(seller, Notification.NotificationType.LISTING_APPROVED,
-                "Listing đã được duyệt",
-                "Listing #" + listingId + " đã được admin duyệt và hiển thị cho người mua.");
-    }
-
-    @Async
-    @Transactional
-    public void notifyListingRejected(User seller, Long listingId, String reason) {
-        send(seller, Notification.NotificationType.LISTING_REJECTED,
-                "Listing bị từ chối",
-                "Listing #" + listingId + " bị từ chối. Lý do: " + reason);
-    }
-
-    private void send(User user, Notification.NotificationType type, String title, String content) {
-        try {
-            var notification = Notification.create(user, type, title, content);
-            notificationRepository.save(notification);
-            log.debug("Notification saved for user {} — type {}", user.getId(), type);
-        } catch (Exception e) {
-            log.error("Failed to save notification for user {} — {}", user.getId(), e.getMessage());
-        }
+    public void createNotification(
+            User user,
+            Notification.NotificationType type,
+            String title,
+            String content
+    ) {
+        var notification = Notification.create(user, type, title, content);
+        notificationRepository.save(notification);
+        log.debug("Notification saved for user {} — type {}", user.getId(), type);
     }
 
     private Long extractUserId(Jwt jwt) {

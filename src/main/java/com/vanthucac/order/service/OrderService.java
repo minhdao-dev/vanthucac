@@ -6,6 +6,7 @@ import com.vanthucac.cart.exception.CartException;
 import com.vanthucac.cart.repository.CartRepository;
 import com.vanthucac.common.config.CommissionProperties;
 import com.vanthucac.common.dto.PageResponse;
+import com.vanthucac.common.outbox.OutboxEventService;
 import com.vanthucac.common.util.PageableUtils;
 import com.vanthucac.listing.entity.BookListing;
 import com.vanthucac.listing.entity.ListingImage;
@@ -19,14 +20,14 @@ import com.vanthucac.order.entity.Order;
 import com.vanthucac.order.entity.OrderItem;
 import com.vanthucac.order.exception.OrderException;
 import com.vanthucac.order.repository.OrderRepository;
-import com.vanthucac.payment.entity.EscrowRecord;
-import com.vanthucac.payment.entity.Payment;
 import com.vanthucac.payment.entity.PlatformCommission;
 import com.vanthucac.payment.repository.EscrowRecordRepository;
-import com.vanthucac.payment.repository.PaymentRepository;
 import com.vanthucac.payment.repository.PlatformCommissionRepository;
+import com.vanthucac.payment.service.PaymentService;
 import com.vanthucac.seller.entity.SellerProfile;
+import com.vanthucac.seller.entity.WalletTransaction;
 import com.vanthucac.seller.repository.SellerWalletRepository;
+import com.vanthucac.seller.repository.WalletTransactionRepository;
 import com.vanthucac.user.exception.UserException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,40 +44,47 @@ import java.util.stream.Collectors;
 public class OrderService {
 
     private static final Logger log = LoggerFactory.getLogger(OrderService.class);
+    private static final String WALLET_REFERENCE_ORDER = "ORDER";
 
     private final OrderRepository orderRepository;
-    private final PaymentRepository paymentRepository;
+    private final PaymentService paymentService;
     private final EscrowRecordRepository escrowRecordRepository;
     private final PlatformCommissionRepository platformCommissionRepository;
     private final SellerWalletRepository sellerWalletRepository;
+    private final WalletTransactionRepository walletTransactionRepository;
     private final CartRepository cartRepository;
     private final BookListingRepository bookListingRepository;
     private final ListingImageRepository listingImageRepository;
     private final UserRepository userRepository;
     private final CommissionProperties commissionProperties;
+    private final OutboxEventService outboxEventService;
 
     public OrderService(
             OrderRepository orderRepository,
-            PaymentRepository paymentRepository,
+            PaymentService paymentService,
             EscrowRecordRepository escrowRecordRepository,
             PlatformCommissionRepository platformCommissionRepository,
             SellerWalletRepository sellerWalletRepository,
+            WalletTransactionRepository walletTransactionRepository,
             CartRepository cartRepository,
             BookListingRepository bookListingRepository,
             ListingImageRepository listingImageRepository,
             UserRepository userRepository,
-            CommissionProperties commissionProperties
+            CommissionProperties commissionProperties,
+            OutboxEventService outboxEventService
     ) {
         this.orderRepository = orderRepository;
-        this.paymentRepository = paymentRepository;
+        this.paymentService = paymentService;
         this.escrowRecordRepository = escrowRecordRepository;
         this.platformCommissionRepository = platformCommissionRepository;
         this.sellerWalletRepository = sellerWalletRepository;
+        this.walletTransactionRepository = walletTransactionRepository;
         this.cartRepository = cartRepository;
         this.bookListingRepository = bookListingRepository;
         this.listingImageRepository = listingImageRepository;
         this.userRepository = userRepository;
         this.commissionProperties = commissionProperties;
+        this.outboxEventService = outboxEventService;
     }
 
     @Transactional
@@ -153,16 +161,10 @@ public class OrderService {
                 subOrder.getItems().add(orderItem);
             }
             orderRepository.save(subOrder);
-
-            if (subOrderType == Order.OrderType.C2C) {
-                var escrow = EscrowRecord.create(subOrder, subTotal);
-                escrowRecordRepository.save(escrow);
-                log.info("Escrow created for sub-order {} — amount {}", subOrder.getId(), subTotal);
-            }
         }
 
-        var payment = Payment.createMock(parentOrder, grandTotal);
-        paymentRepository.save(payment);
+        paymentService.createPaymentIntent(parentOrder, grandTotal);
+        publishOrderCreatedEvent(parentOrder);
 
         cartRepository.delete(cart);
         log.info("Order {} created for user {}", parentOrder.getId(), userId);
@@ -215,11 +217,10 @@ public class OrderService {
             throw OrderException.accessDenied();
         }
 
-        if (order.getStatus() != Order.OrderStatus.PENDING) {
-            throw OrderException.invalidStatusTransition();
-        }
+        paymentService.ensureOrderPaymentCompleted(order.getParentOrder().getId());
 
         order.confirm();
+        publishOrderConfirmedEvent(order);
     }
 
     @Transactional
@@ -235,6 +236,8 @@ public class OrderService {
         if (!order.isParentOrder()) {
             throw OrderException.invalidStatusTransition();
         }
+
+        paymentService.ensureOrderPaymentCompleted(order.getId());
 
         var allReadyToComplete = order.getSubOrders().stream()
                 .allMatch(sub -> sub.getOrderType() == Order.OrderType.B2C
@@ -253,6 +256,7 @@ public class OrderService {
             }
         });
 
+        publishOrderCompletedEvent(order);
         log.info("Order {} completed successfully", order.getId());
     }
 
@@ -273,13 +277,18 @@ public class OrderService {
         order.cancel();
 
         if (order.isParentOrder()) {
+            paymentService.cancelPaymentIfUnpaid(order.getId());
             order.getSubOrders().forEach(sub -> {
                 sub.cancel();
 
                 if (sub.getOrderType() == Order.OrderType.C2C) {
                     escrowRecordRepository.findByOrderId(sub.getId())
                             .ifPresent(escrow -> {
+                                if (escrow.isNotHolding()) {
+                                    throw OrderException.invalidStatusTransition();
+                                }
                                 escrow.refund();
+                                publishEscrowRefundedEvent(sub);
                                 log.info("Escrow refunded for sub-order {}", sub.getId());
                             });
                 }
@@ -287,6 +296,7 @@ public class OrderService {
         }
 
         restoreStockForOrder(order);
+        publishOrderCancelledEvent(order);
 
         log.info("Order {} cancelled, stock restored", order.getId());
     }
@@ -322,6 +332,15 @@ public class OrderService {
                     return OrderException.orderNotFound();
                 });
 
+        if (escrow.isReleased()) {
+            log.info("Escrow already released for sub-order {}", subOrder.getId());
+            return;
+        }
+
+        if (escrow.isNotHolding()) {
+            throw OrderException.invalidStatusTransition();
+        }
+
         var seller = subOrder.getSeller();
         var totalAmount = subOrder.getTotalAmount();
         var commissionRate = commissionProperties.rate();
@@ -332,8 +351,10 @@ public class OrderService {
 
         var netAmount = totalAmount.subtract(commissionAmount);
 
-        var commission = PlatformCommission.create(subOrder, seller, commissionAmount, commissionRate);
-        platformCommissionRepository.save(commission);
+        if (!platformCommissionRepository.existsByOrderId(subOrder.getId())) {
+            var commission = PlatformCommission.create(subOrder, seller, commissionAmount, commissionRate);
+            platformCommissionRepository.save(commission);
+        }
 
         var wallet = sellerWalletRepository.findBySellerId(seller.getId())
                 .orElseThrow(() -> {
@@ -341,11 +362,124 @@ public class OrderService {
                     return OrderException.orderNotFound();
                 });
 
+        var transactionExists = walletTransactionRepository.existsByWalletIdAndTypeAndReferenceTypeAndReferenceId(
+                wallet.getId(),
+                WalletTransaction.TransactionType.ESCROW_RELEASE,
+                WALLET_REFERENCE_ORDER,
+                subOrder.getId()
+        );
+
+        if (transactionExists) {
+            throw OrderException.invalidStatusTransition();
+        }
+
+        var balanceBefore = wallet.getBalance();
         wallet.credit(netAmount);
+        var balanceAfter = wallet.getBalance();
+
+        var walletTransaction = WalletTransaction.create(
+                wallet,
+                WalletTransaction.TransactionType.ESCROW_RELEASE,
+                netAmount,
+                balanceBefore,
+                balanceAfter,
+                WALLET_REFERENCE_ORDER,
+                subOrder.getId(),
+                "Escrow released for order " + subOrder.getId()
+        );
+        walletTransactionRepository.save(walletTransaction);
+
         escrow.release();
+        publishEscrowReleasedEvent(subOrder, commissionAmount, netAmount);
 
         log.info("Escrow released for sub-order {} — total: {}, commission: {}, net: {}",
                 subOrder.getId(), totalAmount, commissionAmount, netAmount);
+    }
+
+    private void publishOrderCreatedEvent(Order order) {
+        outboxEventService.publish(
+                "ORDER_CREATED",
+                "ORDER",
+                order.getId(),
+                Map.of(
+                        "orderId", order.getId(),
+                        "userId", order.getUser().getId(),
+                        "totalAmount", order.getTotalAmount(),
+                        "orderType", order.getOrderType().name(),
+                        "status", order.getStatus().name()
+                )
+        );
+    }
+
+    private void publishOrderConfirmedEvent(Order order) {
+        outboxEventService.publish(
+                "ORDER_CONFIRMED",
+                "ORDER",
+                order.getId(),
+                Map.of(
+                        "orderId", order.getId(),
+                        "parentOrderId", order.getParentOrder().getId(),
+                        "sellerId", order.getSeller().getId(),
+                        "status", order.getStatus().name()
+                )
+        );
+    }
+
+    private void publishOrderCompletedEvent(Order order) {
+        outboxEventService.publish(
+                "ORDER_COMPLETED",
+                "ORDER",
+                order.getId(),
+                Map.of(
+                        "orderId", order.getId(),
+                        "userId", order.getUser().getId(),
+                        "totalAmount", order.getTotalAmount(),
+                        "status", order.getStatus().name()
+                )
+        );
+    }
+
+    private void publishOrderCancelledEvent(Order order) {
+        outboxEventService.publish(
+                "ORDER_CANCELLED",
+                "ORDER",
+                order.getId(),
+                Map.of(
+                        "orderId", order.getId(),
+                        "userId", order.getUser().getId(),
+                        "status", order.getStatus().name()
+                )
+        );
+    }
+
+    private void publishEscrowReleasedEvent(Order subOrder, BigDecimal commissionAmount, BigDecimal netAmount) {
+        outboxEventService.publish(
+                "ESCROW_RELEASED",
+                "ORDER",
+                subOrder.getId(),
+                Map.of(
+                        "orderId", subOrder.getId(),
+                        "parentOrderId", subOrder.getParentOrder().getId(),
+                        "sellerId", subOrder.getSeller().getId(),
+                        "totalAmount", subOrder.getTotalAmount(),
+                        "commissionAmount", commissionAmount,
+                        "netAmount", netAmount
+                )
+        );
+    }
+
+    private void publishEscrowRefundedEvent(Order subOrder) {
+        outboxEventService.publish(
+                "ESCROW_REFUNDED",
+                "ORDER",
+                subOrder.getId(),
+                Map.of(
+                        "orderId", subOrder.getId(),
+                        "parentOrderId", subOrder.getParentOrder().getId(),
+                        "sellerId", subOrder.getSeller().getId(),
+                        "amount", subOrder.getTotalAmount()
+                )
+        );
     }
 
     private OrderResponse buildOrderResponse(Order order) {

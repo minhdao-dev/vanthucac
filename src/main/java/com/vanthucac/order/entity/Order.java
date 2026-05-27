@@ -1,6 +1,7 @@
 package com.vanthucac.order.entity;
 
 import com.vanthucac.auth.entity.User;
+import com.vanthucac.order.exception.OrderException;
 import com.vanthucac.seller.entity.SellerProfile;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -67,7 +68,24 @@ public class Order {
     private Instant updatedAt;
 
     public enum OrderStatus {
-        PENDING, CONFIRMED, SHIPPING, COMPLETED, CANCELLED
+        PENDING,
+        CONFIRMED,
+        SHIPPING,
+        COMPLETED,
+        CANCELLED;
+
+        public boolean canTransitionTo(OrderStatus target) {
+            return switch (this) {
+                case PENDING -> target == CONFIRMED
+                        || target == COMPLETED
+                        || target == CANCELLED;
+                case CONFIRMED -> target == SHIPPING
+                        || target == COMPLETED
+                        || target == CANCELLED;
+                case SHIPPING -> target == COMPLETED;
+                case COMPLETED, CANCELLED -> false;
+            };
+        }
     }
 
     public enum OrderType {
@@ -98,22 +116,29 @@ public class Order {
     }
 
     public void confirm() {
-        this.status = OrderStatus.CONFIRMED;
+        transitionTo(OrderStatus.CONFIRMED);
     }
 
     public void complete() {
-        this.status = OrderStatus.COMPLETED;
+        transitionTo(OrderStatus.COMPLETED);
     }
 
     public void cancel() {
-        this.status = OrderStatus.CANCELLED;
+        transitionTo(OrderStatus.CANCELLED);
     }
 
     public boolean isCancellable() {
-        return status == OrderStatus.PENDING || status == OrderStatus.CONFIRMED;
+        return status.canTransitionTo(OrderStatus.CANCELLED);
     }
 
     public boolean isParentOrder() {
         return parentOrder == null;
+    }
+
+    private void transitionTo(OrderStatus targetStatus) {
+        if (!status.canTransitionTo(targetStatus)) {
+            throw OrderException.invalidStatusTransition();
+        }
+        this.status = targetStatus;
     }
 }

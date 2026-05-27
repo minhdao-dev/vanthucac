@@ -14,6 +14,7 @@ target/
 .env
 .env.*
 !.env.example
+!.env.prod.example
 
 .DS_Store
 Thumbs.db

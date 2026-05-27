@@ -1,5 +1,6 @@
 package com.vanthucac.listing.service;
 
+import com.vanthucac.audit.service.AuditLogService;
 import com.vanthucac.common.config.CacheConfig;
 import com.vanthucac.common.dto.PageResponse;
 import com.vanthucac.common.util.PageableUtils;
@@ -10,13 +11,14 @@ import com.vanthucac.listing.exception.ListingErrorCode;
 import com.vanthucac.listing.exception.ListingException;
 import com.vanthucac.listing.repository.BookListingRepository;
 import com.vanthucac.listing.repository.ListingImageRepository;
-import com.vanthucac.notification.service.NotificationService;
+import com.vanthucac.notification.outbox.NotificationOutboxEventPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,16 +33,19 @@ public class AdminListingService {
 
     private final BookListingRepository bookListingRepository;
     private final ListingImageRepository listingImageRepository;
-    private final NotificationService notificationService;
+    private final NotificationOutboxEventPublisher notificationOutboxEventPublisher;
+    private final AuditLogService auditLogService;
 
     public AdminListingService(
             BookListingRepository bookListingRepository,
             ListingImageRepository listingImageRepository,
-            NotificationService notificationService
+            NotificationOutboxEventPublisher notificationOutboxEventPublisher,
+            AuditLogService auditLogService
     ) {
         this.bookListingRepository = bookListingRepository;
         this.listingImageRepository = listingImageRepository;
-        this.notificationService = notificationService;
+        this.notificationOutboxEventPublisher = notificationOutboxEventPublisher;
+        this.auditLogService = auditLogService;
     }
 
     @Transactional(readOnly = true)
@@ -51,6 +56,7 @@ public class AdminListingService {
                 cb.equal(root.get("status"), BookListing.ListingStatus.PENDING_REVIEW);
 
         var listingsPage = bookListingRepository.findAll(pendingSpec, pageable);
+
         var imagesByListingId = batchLoadImages(
                 listingsPage.getContent().stream().map(BookListing::getId).toList()
         );
@@ -68,7 +74,7 @@ public class AdminListingService {
             @CacheEvict(value = CacheConfig.LISTING_DETAIL_CACHE, key = "#listingId")
     })
     @Transactional
-    public ListingResponse approveListing(Long listingId) {
+    public ListingResponse approveListing(Long listingId, Jwt jwt) {
         var listing = bookListingRepository.findById(listingId)
                 .orElseThrow(ListingException::listingNotFound);
 
@@ -84,8 +90,19 @@ public class AdminListingService {
         log.info("Listing {} approved by admin", listingId);
 
         if (listing.getSeller() != null) {
-            notificationService.notifyListingApproved(listing.getSeller().getUser(), listingId);
+            notificationOutboxEventPublisher.publishListingApprovedNotification(
+                    listing.getSeller().getUser().getId(),
+                    listingId
+            );
         }
+
+        auditLogService.log(
+                jwt,
+                "LISTING_APPROVED",
+                "LISTING",
+                listingId,
+                "Admin approved listing #" + listingId
+        );
 
         return ListingResponse.from(listing, getImageUrls(listingId));
     }
@@ -95,7 +112,7 @@ public class AdminListingService {
             @CacheEvict(value = CacheConfig.LISTING_DETAIL_CACHE, key = "#listingId")
     })
     @Transactional
-    public ListingResponse rejectListing(Long listingId, String reason) {
+    public ListingResponse rejectListing(Long listingId, String reason, Jwt jwt) {
         var listing = bookListingRepository.findById(listingId)
                 .orElseThrow(ListingException::listingNotFound);
 
@@ -111,16 +128,27 @@ public class AdminListingService {
         log.info("Listing {} rejected by admin — reason: {}", listingId, reason);
 
         if (listing.getSeller() != null) {
-            notificationService.notifyListingRejected(
-                    listing.getSeller().getUser(), listingId, reason
+            notificationOutboxEventPublisher.publishListingRejectedNotification(
+                    listing.getSeller().getUser().getId(),
+                    listingId,
+                    reason
             );
         }
+
+        auditLogService.log(
+                jwt,
+                "LISTING_REJECTED",
+                "LISTING",
+                listingId,
+                "Admin rejected listing #" + listingId + ". Reason: " + reason
+        );
 
         return ListingResponse.from(listing, getImageUrls(listingId));
     }
 
     private Map<Long, List<String>> batchLoadImages(List<Long> listingIds) {
         if (listingIds.isEmpty()) return Map.of();
+
         return listingImageRepository
                 .findByListingIdInOrderBySortOrder(listingIds)
                 .stream()
