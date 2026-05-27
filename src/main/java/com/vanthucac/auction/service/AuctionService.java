@@ -13,8 +13,8 @@ import com.vanthucac.auth.entity.User;
 import com.vanthucac.auth.repository.UserRepository;
 import com.vanthucac.catalog.repository.BookCatalogRepository;
 import com.vanthucac.common.dto.PageResponse;
+import com.vanthucac.common.outbox.OutboxEventService;
 import com.vanthucac.common.util.PageableUtils;
-import com.vanthucac.notification.service.EmailNotificationService;
 import com.vanthucac.notification.service.NotificationService;
 import com.vanthucac.user.exception.UserException;
 import org.slf4j.Logger;
@@ -28,11 +28,16 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Instant;
+import java.util.Map;
 
 @Service
 public class AuctionService {
 
     private static final Logger log = LoggerFactory.getLogger(AuctionService.class);
+
+    private static final String AUCTION_WINNER_EMAIL_EVENT = "AUCTION_WINNER_EMAIL_REQUESTED";
+    private static final String AUCTION_WON_NOTIFICATION_EVENT = "AUCTION_WON_NOTIFICATION_REQUESTED";
+    private static final String AUCTION_ITEM_AGGREGATE = "AUCTION_ITEM";
 
     private final AuctionSessionRepository auctionSessionRepository;
     private final AuctionItemRepository auctionItemRepository;
@@ -40,8 +45,8 @@ public class AuctionService {
     private final UserRepository userRepository;
     private final BookCatalogRepository bookCatalogRepository;
     private final SimpMessagingTemplate messagingTemplate;
-    private final EmailNotificationService emailNotificationService;
     private final NotificationService notificationService;
+    private final OutboxEventService outboxEventService;
 
     public AuctionService(
             AuctionSessionRepository auctionSessionRepository,
@@ -50,8 +55,8 @@ public class AuctionService {
             UserRepository userRepository,
             BookCatalogRepository bookCatalogRepository,
             SimpMessagingTemplate messagingTemplate,
-            EmailNotificationService emailNotificationService,
-            NotificationService notificationService
+            NotificationService notificationService,
+            OutboxEventService outboxEventService
     ) {
         this.auctionSessionRepository = auctionSessionRepository;
         this.auctionItemRepository = auctionItemRepository;
@@ -59,8 +64,8 @@ public class AuctionService {
         this.userRepository = userRepository;
         this.bookCatalogRepository = bookCatalogRepository;
         this.messagingTemplate = messagingTemplate;
-        this.emailNotificationService = emailNotificationService;
         this.notificationService = notificationService;
+        this.outboxEventService = outboxEventService;
     }
 
     @Transactional
@@ -96,8 +101,12 @@ public class AuctionService {
         var bookCatalog = bookCatalogRepository.findById(request.bookCatalogId())
                 .orElseThrow(AuctionException::itemNotFound);
 
-        var item = AuctionItem.create(session, bookCatalog,
-                request.startingPrice(), request.minBidIncrement());
+        var item = AuctionItem.create(
+                session,
+                bookCatalog,
+                request.startingPrice(),
+                request.minBidIncrement()
+        );
         auctionItemRepository.save(item);
 
         return AuctionItemResponse.from(item);
@@ -190,6 +199,7 @@ public class AuctionService {
         }
 
         var pageable = PageableUtils.build(page, size, "createdAt,desc");
+
         return PageResponse.from(
                 bidRepository.findByAuctionItemIdOrderByCreatedAtDesc(itemId, pageable)
                         .map(BidResponse::from)
@@ -223,11 +233,8 @@ public class AuctionService {
         for (var item : session.getItems()) {
             if (item.getWinner() != null) {
                 item.sold();
-                emailNotificationService.sendAuctionWinnerNotification(item);
-                notificationService.notifyAuctionWon(
-                        item.getWinner(),
-                        item.getBookCatalog().getTitle()
-                );
+                publishAuctionWinnerEmailEvent(item);
+                publishAuctionWonNotificationEvent(item);
                 log.info("Item {} sold to user {}", item.getId(), item.getWinner().getId());
             } else {
                 item.unsold();
@@ -236,12 +243,44 @@ public class AuctionService {
         }
     }
 
+    private void publishAuctionWinnerEmailEvent(AuctionItem item) {
+        var winner = item.getWinner();
+
+        outboxEventService.publish(
+                AUCTION_WINNER_EMAIL_EVENT,
+                AUCTION_ITEM_AGGREGATE,
+                item.getId(),
+                Map.of(
+                        "auctionItemId", item.getId(),
+                        "winnerId", winner.getId(),
+                        "winnerEmail", winner.getEmail(),
+                        "winnerFullName", winner.getFullName(),
+                        "bookTitle", item.getBookCatalog().getTitle(),
+                        "winningPrice", item.getCurrentPrice().toPlainString()
+                )
+        );
+    }
+
+    private void publishAuctionWonNotificationEvent(AuctionItem item) {
+        outboxEventService.publish(
+                AUCTION_WON_NOTIFICATION_EVENT,
+                AUCTION_ITEM_AGGREGATE,
+                item.getId(),
+                Map.of(
+                        "auctionItemId", item.getId(),
+                        "winnerId", item.getWinner().getId(),
+                        "bookTitle", item.getBookCatalog().getTitle()
+                )
+        );
+    }
+
     private AuctionSession.SessionStatus parseSessionStatus(String status) {
         try {
             return AuctionSession.SessionStatus.valueOf(status.toUpperCase());
         } catch (IllegalArgumentException e) {
             throw new AuctionException(
-                    "Invalid session status: " + status + ". Valid values: SCHEDULED, ACTIVE, CLOSED",
+                    "Invalid session status: " + status
+                            + ". Valid values: SCHEDULED, ACTIVE, CLOSED",
                     AuctionErrorCode.SESSION_NOT_FOUND,
                     HttpStatus.BAD_REQUEST
             );
