@@ -16,16 +16,21 @@ public class OutboxEventProcessor {
     private static final Logger log = LoggerFactory.getLogger(OutboxEventProcessor.class);
 
     private final OutboxEventRepository outboxEventRepository;
+    private final List<OutboxEventHandler> handlers;
 
-    public OutboxEventProcessor(OutboxEventRepository outboxEventRepository) {
+    public OutboxEventProcessor(
+            OutboxEventRepository outboxEventRepository,
+            List<OutboxEventHandler> handlers
+    ) {
         this.outboxEventRepository = outboxEventRepository;
+        this.handlers = handlers;
     }
 
     @Scheduled(fixedDelayString = "${app.outbox.processing-delay-ms:5000}")
     @Transactional
     public void processPendingEvents() {
-        var events = outboxEventRepository.findTop50ByStatusInAndNextRetryAtLessThanEqualOrderByCreatedAtAsc(
-                List.of(OutboxEvent.OutboxStatus.PENDING, OutboxEvent.OutboxStatus.FAILED),
+        var events = outboxEventRepository.findTop50ByStatusAndNextRetryAtLessThanEqualOrderByCreatedAtAsc(
+                OutboxEvent.OutboxStatus.PENDING,
                 Instant.now()
         );
 
@@ -41,7 +46,7 @@ public class OutboxEventProcessor {
 
         try {
             event.markProcessing();
-            handle(event);
+            findHandler(event).handle(event);
             event.markProcessed();
         } catch (Exception ex) {
             var nextRetryAt = Instant.now().plus(calculateRetryDelay(event.getRetryCount()));
@@ -50,12 +55,13 @@ public class OutboxEventProcessor {
         }
     }
 
-    private void handle(OutboxEvent event) {
-        log.info("Outbox event processed — id: {}, type: {}, aggregate: {}#{}",
-                event.getId(),
-                event.getEventType(),
-                event.getAggregateType(),
-                event.getAggregateId());
+    private OutboxEventHandler findHandler(OutboxEvent event) {
+        return handlers.stream()
+                .filter(handler -> handler.supports(event.getEventType()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "No outbox handler found for event type " + event.getEventType()
+                ));
     }
 
     private Duration calculateRetryDelay(int retryCount) {
