@@ -3,6 +3,8 @@ package com.vanthucac.infrastructure.storage;
 import com.vanthucac.common.dto.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,11 +22,14 @@ public class UploadController {
 
     @PostMapping("/presigned-url")
     public ResponseEntity<ApiResponse<S3UploadService.PresignedUrlResponse>> getPresignedUrl(
-            @Valid @RequestBody PresignedUrlRequest request
+            @Valid @RequestBody PresignedUrlRequest request,
+            @AuthenticationPrincipal Jwt jwt
     ) {
+        var userId = Long.parseLong(jwt.getSubject());
         var result = s3UploadService.generatePresignedUrl(
                 request.fileName(),
-                request.contentType()
+                request.contentType(),
+                userId
         );
         return ResponseEntity.ok(ApiResponse.ok("Presigned URL generated", result));
     }

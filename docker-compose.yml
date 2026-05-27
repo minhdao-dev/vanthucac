@@ -1,33 +1,35 @@
+version: '3.8'
+
 services:
   mysql:
     image: mysql:8.0
     container_name: vanthucac-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
       MYSQL_DATABASE: vanthucac
+      MYSQL_USER: ${DB_USERNAME:-vanthucac}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-vanthucac123}
     ports:
       - "3306:3306"
     volumes:
-      - mysql-data:/var/lib/mysql
+      - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
 
   redis:
     image: redis:8-alpine
     container_name: vanthucac-redis
     ports:
       - "6379:6379"
-    volumes:
-      - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
-      timeout: 5s
+      timeout: 3s
       retries: 5
 
 volumes:
-  mysql-data:
-  redis-data:
+  mysql_data:
