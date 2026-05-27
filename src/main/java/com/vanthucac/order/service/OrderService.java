@@ -9,6 +9,7 @@ import com.vanthucac.common.dto.PageResponse;
 import com.vanthucac.common.util.PageableUtils;
 import com.vanthucac.listing.entity.BookListing;
 import com.vanthucac.listing.entity.ListingImage;
+import com.vanthucac.listing.exception.ListingException;
 import com.vanthucac.listing.repository.BookListingRepository;
 import com.vanthucac.listing.repository.ListingImageRepository;
 import com.vanthucac.order.dto.CheckoutRequest;
@@ -284,6 +285,34 @@ public class OrderService {
                 }
             });
         }
+
+        restoreStockForOrder(order);
+
+        log.info("Order {} cancelled, stock restored", order.getId());
+    }
+
+    private void restoreStockForOrder(Order order) {
+        var allItems = order.isParentOrder()
+                ? order.getSubOrders().stream()
+                .flatMap(sub -> sub.getItems().stream())
+                .toList()
+                : new ArrayList<>(order.getItems());
+
+        if (allItems.isEmpty()) return;
+
+        var sortedItems = allItems.stream()
+                .sorted(Comparator.comparingLong(item -> item.getListing().getId()))
+                .toList();
+
+        for (var item : sortedItems) {
+            var listing = bookListingRepository
+                    .findByIdWithLock(item.getListing().getId())
+                    .orElseThrow(ListingException::listingNotFound);
+
+            listing.restoreStock(item.getQuantity());
+            log.debug("Stock restored for listing {} — quantity +{}",
+                    listing.getId(), item.getQuantity());
+        }
     }
 
     private void releaseEscrow(Order subOrder) {
@@ -331,9 +360,7 @@ public class OrderService {
     }
 
     private List<OrderItemResponse> buildItemResponses(Set<OrderItem> items) {
-        if (items.isEmpty()) {
-            return List.of();
-        }
+        if (items.isEmpty()) return List.of();
 
         var listingIds = items.stream()
                 .map(item -> item.getListing().getId())

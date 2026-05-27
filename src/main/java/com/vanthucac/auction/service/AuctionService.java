@@ -4,18 +4,22 @@ import com.vanthucac.auction.dto.*;
 import com.vanthucac.auction.entity.AuctionItem;
 import com.vanthucac.auction.entity.AuctionSession;
 import com.vanthucac.auction.entity.Bid;
+import com.vanthucac.auction.exception.AuctionErrorCode;
 import com.vanthucac.auction.exception.AuctionException;
 import com.vanthucac.auction.repository.AuctionItemRepository;
 import com.vanthucac.auction.repository.AuctionSessionRepository;
 import com.vanthucac.auction.repository.BidRepository;
+import com.vanthucac.auth.entity.User;
 import com.vanthucac.auth.repository.UserRepository;
 import com.vanthucac.catalog.repository.BookCatalogRepository;
 import com.vanthucac.common.dto.PageResponse;
 import com.vanthucac.common.util.PageableUtils;
 import com.vanthucac.notification.service.EmailNotificationService;
+import com.vanthucac.notification.service.NotificationService;
 import com.vanthucac.user.exception.UserException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
@@ -37,6 +41,7 @@ public class AuctionService {
     private final BookCatalogRepository bookCatalogRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final EmailNotificationService emailNotificationService;
+    private final NotificationService notificationService;
 
     public AuctionService(
             AuctionSessionRepository auctionSessionRepository,
@@ -45,7 +50,8 @@ public class AuctionService {
             UserRepository userRepository,
             BookCatalogRepository bookCatalogRepository,
             SimpMessagingTemplate messagingTemplate,
-            EmailNotificationService emailNotificationService
+            EmailNotificationService emailNotificationService,
+            NotificationService notificationService
     ) {
         this.auctionSessionRepository = auctionSessionRepository;
         this.auctionItemRepository = auctionItemRepository;
@@ -54,6 +60,7 @@ public class AuctionService {
         this.bookCatalogRepository = bookCatalogRepository;
         this.messagingTemplate = messagingTemplate;
         this.emailNotificationService = emailNotificationService;
+        this.notificationService = notificationService;
     }
 
     @Transactional
@@ -101,7 +108,7 @@ public class AuctionService {
         var pageable = PageableUtils.build(page, size, "startTime,desc");
 
         if (status != null && !status.isBlank()) {
-            var sessionStatus = AuctionSession.SessionStatus.valueOf(status);
+            var sessionStatus = parseSessionStatus(status);
             return PageResponse.from(
                     auctionSessionRepository.findByStatus(sessionStatus, pageable)
                             .map(AuctionSessionResponse::from)
@@ -134,18 +141,28 @@ public class AuctionService {
             throw AuctionException.sessionNotActive();
         }
 
+        if (item.getWinner() != null && item.getWinner().getId().equals(userId)) {
+            throw AuctionException.bidOnOwnItem();
+        }
+
         if (!item.canBid(request.amount())) {
             var minRequired = item.getCurrentPrice().add(item.getMinBidIncrement());
             throw AuctionException.bidTooLow(minRequired.toPlainString());
         }
+
+        final User previousWinner = item.getWinner();
+        final String bookTitle = item.getBookCatalog().getTitle();
 
         var bid = Bid.create(item, user, request.amount());
         bidRepository.save(bid);
 
         item.placeBid(request.amount(), user);
 
-        log.info("Bid placed on item {} by user {} — amount {}",
-                itemId, userId, request.amount());
+        log.info("Bid placed on item {} by user {} — amount {}", itemId, userId, request.amount());
+
+        if (previousWinner != null && !previousWinner.getId().equals(userId)) {
+            notificationService.notifyAuctionOutbid(previousWinner, bookTitle);
+        }
 
         final var broadcastMessage = new BidBroadcastMessage(
                 itemId,
@@ -207,11 +224,27 @@ public class AuctionService {
             if (item.getWinner() != null) {
                 item.sold();
                 emailNotificationService.sendAuctionWinnerNotification(item);
+                notificationService.notifyAuctionWon(
+                        item.getWinner(),
+                        item.getBookCatalog().getTitle()
+                );
                 log.info("Item {} sold to user {}", item.getId(), item.getWinner().getId());
             } else {
                 item.unsold();
                 log.info("Item {} unsold", item.getId());
             }
+        }
+    }
+
+    private AuctionSession.SessionStatus parseSessionStatus(String status) {
+        try {
+            return AuctionSession.SessionStatus.valueOf(status.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new AuctionException(
+                    "Invalid session status: " + status + ". Valid values: SCHEDULED, ACTIVE, CLOSED",
+                    AuctionErrorCode.SESSION_NOT_FOUND,
+                    HttpStatus.BAD_REQUEST
+            );
         }
     }
 

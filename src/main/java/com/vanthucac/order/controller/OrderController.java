@@ -5,6 +5,7 @@ import com.vanthucac.common.dto.ApiResponse;
 import com.vanthucac.order.dto.CheckoutRequest;
 import com.vanthucac.order.dto.OrderResponse;
 import com.vanthucac.order.service.OrderService;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -23,7 +24,7 @@ public class OrderController {
 
     @PostMapping
     public ResponseEntity<ApiResponse<OrderResponse>> checkout(
-            @RequestBody CheckoutRequest request,
+            @Valid @RequestBody CheckoutRequest request,
             @AuthenticationPrincipal Jwt jwt
     ) {
         var order = orderService.checkout(request, jwt);

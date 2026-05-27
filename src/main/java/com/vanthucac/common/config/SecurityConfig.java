@@ -50,6 +50,8 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
+
+                        // ── Public ─────────────────────────────────────────────────
                         .requestMatchers(
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/login",
@@ -73,6 +75,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PUT, "/api/v1/books/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/v1/auction-sessions").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/v1/auction-sessions/*/items").hasRole("ADMIN")
+                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
 
                         .anyRequest().authenticated()
                 )

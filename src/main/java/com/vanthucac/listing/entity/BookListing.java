@@ -107,11 +107,18 @@ public class BookListing {
         return listing;
     }
 
-    public void update(BigDecimal price, BookCondition condition, Integer stock, ListingStatus status) {
-        this.price = price;
-        this.condition = condition;
-        this.stock = stock;
-        this.status = status;
+    public void updateBySeller(BigDecimal price, BookCondition condition, Integer stock) {
+        if (price != null) this.price = price;
+        if (condition != null) this.condition = condition;
+        if (stock != null) this.stock = stock;
+    }
+
+    public void approve() {
+        this.status = ListingStatus.ACTIVE;
+    }
+
+    public void reject() {
+        this.status = ListingStatus.INACTIVE;
     }
 
     public void deactivate() {
@@ -124,8 +131,15 @@ public class BookListing {
 
     public void deductStock(int quantity) {
         if (this.stock < quantity) {
-            throw new IllegalStateException("Insufficient stock");
+            throw new IllegalStateException("Insufficient stock for: " + bookCatalog.getTitle());
         }
         this.stock -= quantity;
+    }
+
+    public void restoreStock(int quantity) {
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("Restore quantity must be positive");
+        }
+        this.stock += quantity;
     }
 }
