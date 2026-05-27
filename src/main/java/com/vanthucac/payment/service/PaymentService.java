@@ -1,5 +1,6 @@
 package com.vanthucac.payment.service;
 
+import com.vanthucac.common.outbox.OutboxEventService;
 import com.vanthucac.order.entity.Order;
 import com.vanthucac.order.exception.OrderException;
 import com.vanthucac.payment.dto.PaymentResponse;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.Map;
 
 @Service
 public class PaymentService {
@@ -26,15 +28,18 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final EscrowRecordRepository escrowRecordRepository;
     private final PaymentProvider paymentProvider;
+    private final OutboxEventService outboxEventService;
 
     public PaymentService(
             PaymentRepository paymentRepository,
             EscrowRecordRepository escrowRecordRepository,
-            PaymentProvider paymentProvider
+            PaymentProvider paymentProvider,
+            OutboxEventService outboxEventService
     ) {
         this.paymentRepository = paymentRepository;
         this.escrowRecordRepository = escrowRecordRepository;
         this.paymentProvider = paymentProvider;
+        this.outboxEventService = outboxEventService;
     }
 
     @Transactional
@@ -95,6 +100,8 @@ public class PaymentService {
 
         payment.complete();
         createEscrowRecordsForPaidOrder(payment.getOrder());
+        publishPaymentCompletedEvent(payment);
+
         log.info("Payment {} completed for order {}", payment.getId(), payment.getOrder().getId());
 
         return PaymentResponse.from(payment);
@@ -128,8 +135,39 @@ public class PaymentService {
                 .forEach(subOrder -> {
                     var escrow = EscrowRecord.create(subOrder, subOrder.getTotalAmount());
                     escrowRecordRepository.save(escrow);
+                    publishEscrowCreatedEvent(escrow);
                     log.info("Escrow created for sub-order {} after payment completion", subOrder.getId());
                 });
+    }
+
+    private void publishPaymentCompletedEvent(Payment payment) {
+        outboxEventService.publish(
+                "PAYMENT_COMPLETED",
+                "PAYMENT",
+                payment.getId(),
+                Map.of(
+                        "paymentId", payment.getId(),
+                        "orderId", payment.getOrder().getId(),
+                        "userId", payment.getOrder().getUser().getId(),
+                        "amount", payment.getAmount(),
+                        "paymentMethod", payment.getPaymentMethod().name(),
+                        "providerPaymentId", payment.getProviderPaymentId()
+                )
+        );
+    }
+
+    private void publishEscrowCreatedEvent(EscrowRecord escrow) {
+        outboxEventService.publish(
+                "ESCROW_CREATED",
+                "ESCROW",
+                escrow.getId(),
+                Map.of(
+                        "escrowId", escrow.getId(),
+                        "orderId", escrow.getOrder().getId(),
+                        "sellerId", escrow.getOrder().getSeller().getId(),
+                        "amount", escrow.getAmount()
+                )
+        );
     }
 
     private Long extractUserId(Jwt jwt) {
