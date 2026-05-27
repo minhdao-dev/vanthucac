@@ -26,7 +26,6 @@ public class Cart {
     @JoinColumn(name = "user_id", nullable = false, unique = true)
     private User user;
 
-    // cascade=ALL + orphanRemoval: remove khỏi list → Hibernate tự DELETE row
     @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id ASC")
     private List<CartItem> items = new ArrayList<>();
@@ -56,13 +55,13 @@ public class Cart {
                 .findFirst();
     }
 
-    public void touch() {
-        this.updatedAt = Instant.now();
-    }
-
-    private Optional<CartItem> findItemByListingId(Long listingId) {
+    public Optional<CartItem> findItemByListingId(Long listingId) {
         return items.stream()
                 .filter(item -> item.getListing().getId().equals(listingId))
                 .findFirst();
+    }
+
+    public void touch() {
+        this.updatedAt = Instant.now();
     }
 }

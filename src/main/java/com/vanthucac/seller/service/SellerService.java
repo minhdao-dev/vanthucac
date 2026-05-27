@@ -1,7 +1,11 @@
 package com.vanthucac.seller.service;
 
+import com.vanthucac.auth.entity.Role;
+import com.vanthucac.auth.repository.RoleRepository;
 import com.vanthucac.auth.repository.UserRepository;
+import com.vanthucac.auth.service.TokenService;
 import com.vanthucac.seller.dto.SellerProfileResponse;
+import com.vanthucac.seller.dto.UpgradeSellerResponse;
 import com.vanthucac.seller.dto.WalletResponse;
 import com.vanthucac.seller.entity.SellerProfile;
 import com.vanthucac.seller.entity.SellerWallet;
@@ -20,19 +24,25 @@ public class SellerService {
     private final SellerProfileRepository sellerProfileRepository;
     private final SellerWalletRepository sellerWalletRepository;
     private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
+    private final TokenService tokenService;
 
     public SellerService(
             SellerProfileRepository sellerProfileRepository,
             SellerWalletRepository sellerWalletRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            RoleRepository roleRepository,
+            TokenService tokenService
     ) {
         this.sellerProfileRepository = sellerProfileRepository;
         this.sellerWalletRepository = sellerWalletRepository;
         this.userRepository = userRepository;
+        this.roleRepository = roleRepository;
+        this.tokenService = tokenService;
     }
 
     @Transactional
-    public SellerProfileResponse upgradeSeller(UpgradeSellerRequest request, Jwt jwt) {
+    public UpgradeSellerResponse upgradeSeller(UpgradeSellerRequest request, Jwt jwt) {
         var userId = extractUserId(jwt);
         var user = userRepository.findById(userId)
                 .orElseThrow(UserException::userNotFound);
@@ -41,13 +51,21 @@ public class SellerService {
             throw SellerException.alreadySeller();
         }
 
+        var sellerRole = roleRepository.findByName(Role.RoleName.SELLER)
+                .orElseThrow(() -> new IllegalStateException("Role SELLER not found — check V1 migration"));
+
+        user.addRole(sellerRole);
+
         var sellerProfile = SellerProfile.create(user, request.shopName(), request.description());
         sellerProfileRepository.save(sellerProfile);
 
         var wallet = SellerWallet.create(sellerProfile);
         sellerWalletRepository.save(wallet);
 
-        return SellerProfileResponse.from(sellerProfile);
+        var sessionId = jwt.getClaim("sessionId").toString();
+        var newAccessToken = tokenService.generateAccessToken(user, sessionId);
+
+        return UpgradeSellerResponse.of(SellerProfileResponse.from(sellerProfile), newAccessToken);
     }
 
     @Transactional(readOnly = true)

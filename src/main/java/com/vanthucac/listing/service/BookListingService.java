@@ -126,14 +126,9 @@ public class BookListingService {
 
         var condition = request.condition() != null
                 ? parseCondition(request.condition())
-                : listing.getCondition();
-        var status = request.status() != null
-                ? parseStatus(request.status())
-                : listing.getStatus();
-        var price = request.price() != null ? request.price() : listing.getPrice();
-        var stock = request.stock() != null ? request.stock() : listing.getStock();
+                : null;
 
-        listing.update(price, condition, stock, status);
+        listing.updateBySeller(request.price(), condition, request.stock());
 
         if (request.imageUrls() != null) {
             listingImageRepository.deleteByListingId(id);
@@ -162,9 +157,7 @@ public class BookListingService {
     }
 
     private Map<Long, List<String>> batchLoadImages(List<Long> listingIds) {
-        if (listingIds.isEmpty()) {
-            return Map.of();
-        }
+        if (listingIds.isEmpty()) return Map.of();
         return listingImageRepository
                 .findByListingIdInOrderBySortOrder(listingIds)
                 .stream()
@@ -199,17 +192,9 @@ public class BookListingService {
 
     private BookListing.BookCondition parseCondition(String condition) {
         try {
-            return BookListing.BookCondition.valueOf(condition);
+            return BookListing.BookCondition.valueOf(condition.toUpperCase());
         } catch (IllegalArgumentException e) {
             throw ListingException.invalidCondition(condition);
-        }
-    }
-
-    private BookListing.ListingStatus parseStatus(String status) {
-        try {
-            return BookListing.ListingStatus.valueOf(status);
-        } catch (IllegalArgumentException e) {
-            throw ListingException.invalidStatus(status);
         }
     }
 

@@ -6,6 +6,8 @@ import com.vanthucac.cart.dto.CartItemResponse;
 import com.vanthucac.cart.dto.CartResponse;
 import com.vanthucac.cart.dto.UpdateCartItemRequest;
 import com.vanthucac.cart.entity.Cart;
+import com.vanthucac.cart.entity.CartItem;
+import com.vanthucac.cart.exception.CartErrorCode;
 import com.vanthucac.cart.exception.CartException;
 import com.vanthucac.cart.repository.CartRepository;
 import com.vanthucac.listing.entity.BookListing;
@@ -13,6 +15,8 @@ import com.vanthucac.listing.entity.ListingImage;
 import com.vanthucac.listing.exception.ListingException;
 import com.vanthucac.listing.repository.BookListingRepository;
 import com.vanthucac.listing.repository.ListingImageRepository;
+import com.vanthucac.seller.repository.SellerProfileRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,17 +31,20 @@ public class CartService {
     private final BookListingRepository bookListingRepository;
     private final ListingImageRepository listingImageRepository;
     private final UserRepository userRepository;
+    private final SellerProfileRepository sellerProfileRepository;
 
     public CartService(
             CartRepository cartRepository,
             BookListingRepository bookListingRepository,
             ListingImageRepository listingImageRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            SellerProfileRepository sellerProfileRepository
     ) {
         this.cartRepository = cartRepository;
         this.bookListingRepository = bookListingRepository;
         this.listingImageRepository = listingImageRepository;
         this.userRepository = userRepository;
+        this.sellerProfileRepository = sellerProfileRepository;
     }
 
     @Transactional(readOnly = true)
@@ -59,11 +66,39 @@ public class CartService {
             throw CartException.listingNotAvailable();
         }
 
+        if (listing.getSeller() != null) {
+            var isSelfPurchase = sellerProfileRepository.findByUserId(userId)
+                    .map(profile -> profile.getId().equals(listing.getSeller().getId()))
+                    .orElse(false);
+
+            if (isSelfPurchase) {
+                throw new CartException(
+                        "You cannot purchase your own listing",
+                        CartErrorCode.LISTING_NOT_AVAILABLE,
+                        HttpStatus.BAD_REQUEST
+                );
+            }
+        }
+
         var cart = cartRepository.findByUserId(userId)
                 .orElseGet(() -> {
                     var userRef = userRepository.getReferenceById(userId);
                     return Cart.create(userRef);
                 });
+
+        var currentQtyInCart = cart.findItemByListingId(listing.getId())
+                .map(CartItem::getQuantity)
+                .orElse(0);
+
+        var totalQty = currentQtyInCart + request.quantity();
+
+        if (listing.getStock() < totalQty) {
+            throw new CartException(
+                    "Requested quantity exceeds available stock (" + listing.getStock() + " available)",
+                    CartErrorCode.LISTING_NOT_AVAILABLE,
+                    HttpStatus.BAD_REQUEST
+            );
+        }
 
         cart.addOrMergeItem(listing, request.quantity());
         cartRepository.save(cart);
@@ -80,6 +115,14 @@ public class CartService {
 
         var item = cart.findItemById(itemId)
                 .orElseThrow(CartException::itemNotFound);
+
+        if (item.getListing().getStock() < request.quantity()) {
+            throw new CartException(
+                    "Requested quantity exceeds available stock (" + item.getListing().getStock() + " available)",
+                    CartErrorCode.LISTING_NOT_AVAILABLE,
+                    HttpStatus.BAD_REQUEST
+            );
+        }
 
         item.updateQuantity(request.quantity());
         cart.touch();

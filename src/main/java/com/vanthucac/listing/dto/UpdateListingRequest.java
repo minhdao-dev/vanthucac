@@ -16,8 +16,6 @@ public record UpdateListingRequest(
         @Min(value = 0, message = "Stock must be at least 0")
         Integer stock,
 
-        String status,
-
         List<String> imageUrls
 ) {
 }

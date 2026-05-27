@@ -1,7 +1,7 @@
 package com.vanthucac.seller.controller;
 
 import com.vanthucac.common.dto.ApiResponse;
-import com.vanthucac.seller.dto.SellerProfileResponse;
+import com.vanthucac.seller.dto.UpgradeSellerResponse;
 import com.vanthucac.seller.dto.WalletResponse;
 import com.vanthucac.seller.service.SellerService;
 import com.vanthucac.user.dto.UpgradeSellerRequest;
@@ -23,14 +23,17 @@ public class SellerController {
     }
 
     @PostMapping
-    public ResponseEntity<ApiResponse<SellerProfileResponse>> upgradeSeller(
+    public ResponseEntity<ApiResponse<UpgradeSellerResponse>> upgradeSeller(
             @Valid @RequestBody UpgradeSellerRequest request,
             @AuthenticationPrincipal Jwt jwt
     ) {
-        var sellerProfile = sellerService.upgradeSeller(request, jwt);
+        var response = sellerService.upgradeSeller(request, jwt);
         return ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body(ApiResponse.ok("Seller profile created successfully", sellerProfile));
+                .body(ApiResponse.ok(
+                        "Seller profile created. Use newAccessToken for subsequent requests.",
+                        response
+                ));
     }
 
     @GetMapping("/wallet")
