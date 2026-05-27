@@ -9,7 +9,6 @@ import com.vanthucac.notification.exception.NotificationException;
 import com.vanthucac.notification.repository.NotificationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -67,61 +66,6 @@ public class NotificationService {
 
     @Transactional
     public void createNotification(
-            User user,
-            Notification.NotificationType type,
-            String title,
-            String content
-    ) {
-        saveNotification(user, type, title, content);
-    }
-
-    @Async
-    @Transactional
-    public void notifyAuctionOutbid(User previousWinner, String bookTitle) {
-        sendSafely(
-                previousWinner,
-                Notification.NotificationType.AUCTION_OUTBID,
-                "Bạn đã bị outbid",
-                "Ai đó vừa đặt giá cao hơn bạn cho cuốn \"" + bookTitle + "\". Đặt lại ngay!"
-        );
-    }
-
-    @Async
-    @Transactional
-    public void notifyListingApproved(User seller, Long listingId) {
-        sendSafely(
-                seller,
-                Notification.NotificationType.LISTING_APPROVED,
-                "Listing đã được duyệt",
-                "Listing #" + listingId + " đã được admin duyệt và hiển thị cho người mua."
-        );
-    }
-
-    @Async
-    @Transactional
-    public void notifyListingRejected(User seller, Long listingId, String reason) {
-        sendSafely(
-                seller,
-                Notification.NotificationType.LISTING_REJECTED,
-                "Listing bị từ chối",
-                "Listing #" + listingId + " bị từ chối. Lý do: " + reason
-        );
-    }
-
-    private void sendSafely(
-            User user,
-            Notification.NotificationType type,
-            String title,
-            String content
-    ) {
-        try {
-            saveNotification(user, type, title, content);
-        } catch (Exception e) {
-            log.error("Failed to save notification for user {} — {}", user.getId(), e.getMessage());
-        }
-    }
-
-    private void saveNotification(
             User user,
             Notification.NotificationType type,
             String title,

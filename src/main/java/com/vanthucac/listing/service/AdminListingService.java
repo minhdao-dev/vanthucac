@@ -10,7 +10,7 @@ import com.vanthucac.listing.exception.ListingErrorCode;
 import com.vanthucac.listing.exception.ListingException;
 import com.vanthucac.listing.repository.BookListingRepository;
 import com.vanthucac.listing.repository.ListingImageRepository;
-import com.vanthucac.notification.service.NotificationService;
+import com.vanthucac.notification.outbox.NotificationOutboxEventPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
@@ -31,16 +31,16 @@ public class AdminListingService {
 
     private final BookListingRepository bookListingRepository;
     private final ListingImageRepository listingImageRepository;
-    private final NotificationService notificationService;
+    private final NotificationOutboxEventPublisher notificationOutboxEventPublisher;
 
     public AdminListingService(
             BookListingRepository bookListingRepository,
             ListingImageRepository listingImageRepository,
-            NotificationService notificationService
+            NotificationOutboxEventPublisher notificationOutboxEventPublisher
     ) {
         this.bookListingRepository = bookListingRepository;
         this.listingImageRepository = listingImageRepository;
-        this.notificationService = notificationService;
+        this.notificationOutboxEventPublisher = notificationOutboxEventPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -51,6 +51,7 @@ public class AdminListingService {
                 cb.equal(root.get("status"), BookListing.ListingStatus.PENDING_REVIEW);
 
         var listingsPage = bookListingRepository.findAll(pendingSpec, pageable);
+
         var imagesByListingId = batchLoadImages(
                 listingsPage.getContent().stream().map(BookListing::getId).toList()
         );
@@ -84,7 +85,10 @@ public class AdminListingService {
         log.info("Listing {} approved by admin", listingId);
 
         if (listing.getSeller() != null) {
-            notificationService.notifyListingApproved(listing.getSeller().getUser(), listingId);
+            notificationOutboxEventPublisher.publishListingApprovedNotification(
+                    listing.getSeller().getUser().getId(),
+                    listingId
+            );
         }
 
         return ListingResponse.from(listing, getImageUrls(listingId));
@@ -111,8 +115,10 @@ public class AdminListingService {
         log.info("Listing {} rejected by admin — reason: {}", listingId, reason);
 
         if (listing.getSeller() != null) {
-            notificationService.notifyListingRejected(
-                    listing.getSeller().getUser(), listingId, reason
+            notificationOutboxEventPublisher.publishListingRejectedNotification(
+                    listing.getSeller().getUser().getId(),
+                    listingId,
+                    reason
             );
         }
 
@@ -121,6 +127,7 @@ public class AdminListingService {
 
     private Map<Long, List<String>> batchLoadImages(List<Long> listingIds) {
         if (listingIds.isEmpty()) return Map.of();
+
         return listingImageRepository
                 .findByListingIdInOrderBySortOrder(listingIds)
                 .stream()

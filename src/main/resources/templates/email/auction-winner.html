@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Chúc mừng bạn đã thắng đấu giá</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f1ec;font-family:Arial,Helvetica,sans-serif;color:#2f241d;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0"
+       style="background-color:#f4f1ec;padding:32px 0;">
+    <tr>
+        <td align="center">
+            <table role="presentation" width="640" cellspacing="0" cellpadding="0"
+                   style="width:640px;max-width:94%;background-color:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #eadfce;">
+                <tr>
+                    <td style="background-color:#6f4e37;padding:28px 32px;text-align:center;">
+                        <div style="font-size:26px;font-weight:700;color:#ffffff;letter-spacing:0.3px;">Vạn Thư Các
+                        </div>
+                        <div style="font-size:14px;color:#f4e9db;margin-top:8px;">Thông báo kết quả đấu giá</div>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding:36px 36px 24px 36px;">
+                        <h1 style="margin:0 0 16px 0;font-size:24px;line-height:1.35;color:#2f241d;">Chúc mừng, <span
+                                th:text="${winnerFullName}">bạn</span>!</h1>
+                        <p style="margin:0 0 18px 0;font-size:16px;line-height:1.7;color:#4b3a30;">
+                            Bạn đã thắng phiên đấu giá cho cuốn sách dưới đây. Đội ngũ Vạn Thư Các sẽ liên hệ với bạn để
+                            hoàn tất giao dịch.
+                        </p>
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
+                               style="margin:24px 0;border-collapse:collapse;background-color:#fbf7f0;border:1px solid #eadfce;border-radius:14px;overflow:hidden;">
+                            <tr>
+                                <td style="padding:18px 20px;border-bottom:1px solid #eadfce;font-size:14px;color:#7a6859;width:160px;">
+                                    Sách
+                                </td>
+                                <td style="padding:18px 20px;border-bottom:1px solid #eadfce;font-size:16px;color:#2f241d;font-weight:700;"
+                                    th:text="${bookTitle}">Tên sách
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding:18px 20px;font-size:14px;color:#7a6859;width:160px;">Giá thắng</td>
+                                <td style="padding:18px 20px;font-size:16px;color:#2f241d;font-weight:700;">
+                                    <span th:text="${winningPrice}">0</span> VND
+                                </td>
+                            </tr>
+                        </table>
+                        <p style="margin:0 0 18px 0;font-size:15px;line-height:1.7;color:#4b3a30;">
+                            Vui lòng theo dõi thông báo trong hệ thống để cập nhật các bước tiếp theo.
+                        </p>
+                        <div style="margin-top:28px;padding:18px 20px;background-color:#f7efe4;border-left:4px solid #6f4e37;border-radius:10px;color:#4b3a30;font-size:14px;line-height:1.6;">
+                            Nếu bạn không tham gia phiên đấu giá này, vui lòng bỏ qua email hoặc liên hệ với Vạn Thư Các
+                            để được hỗ trợ.
+                        </div>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding:24px 36px 32px 36px;color:#7a6859;font-size:14px;line-height:1.7;border-top:1px solid #eadfce;">
+                        Trân trọng,<br>
+                        <strong style="color:#2f241d;">Vạn Thư Các</strong>
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+</table>
+</body>
+</html>

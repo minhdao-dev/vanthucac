@@ -1,9 +1,10 @@
-package com.vanthucac.notification.service;
+package com.vanthucac.notification.outbox;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vanthucac.common.outbox.OutboxEvent;
 import com.vanthucac.common.outbox.OutboxEventHandler;
+import com.vanthucac.notification.service.EmailNotificationService;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -12,8 +13,6 @@ import java.math.BigDecimal;
 @Component
 @Order(0)
 public class AuctionWinnerEmailOutboxEventHandler implements OutboxEventHandler {
-
-    private static final String EVENT_TYPE = "AUCTION_WINNER_EMAIL_REQUESTED";
 
     private final ObjectMapper objectMapper;
     private final EmailNotificationService emailNotificationService;
@@ -28,7 +27,7 @@ public class AuctionWinnerEmailOutboxEventHandler implements OutboxEventHandler 
 
     @Override
     public boolean supports(String eventType) {
-        return EVENT_TYPE.equals(eventType);
+        return NotificationEventType.AUCTION_WINNER_EMAIL_REQUESTED.equals(eventType);
     }
 
     @Override

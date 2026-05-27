@@ -13,9 +13,8 @@ import com.vanthucac.auth.entity.User;
 import com.vanthucac.auth.repository.UserRepository;
 import com.vanthucac.catalog.repository.BookCatalogRepository;
 import com.vanthucac.common.dto.PageResponse;
-import com.vanthucac.common.outbox.OutboxEventService;
 import com.vanthucac.common.util.PageableUtils;
-import com.vanthucac.notification.service.NotificationService;
+import com.vanthucac.notification.outbox.NotificationOutboxEventPublisher;
 import com.vanthucac.user.exception.UserException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,16 +27,11 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Instant;
-import java.util.Map;
 
 @Service
 public class AuctionService {
 
     private static final Logger log = LoggerFactory.getLogger(AuctionService.class);
-
-    private static final String AUCTION_WINNER_EMAIL_EVENT = "AUCTION_WINNER_EMAIL_REQUESTED";
-    private static final String AUCTION_WON_NOTIFICATION_EVENT = "AUCTION_WON_NOTIFICATION_REQUESTED";
-    private static final String AUCTION_ITEM_AGGREGATE = "AUCTION_ITEM";
 
     private final AuctionSessionRepository auctionSessionRepository;
     private final AuctionItemRepository auctionItemRepository;
@@ -45,8 +39,7 @@ public class AuctionService {
     private final UserRepository userRepository;
     private final BookCatalogRepository bookCatalogRepository;
     private final SimpMessagingTemplate messagingTemplate;
-    private final NotificationService notificationService;
-    private final OutboxEventService outboxEventService;
+    private final NotificationOutboxEventPublisher notificationOutboxEventPublisher;
 
     public AuctionService(
             AuctionSessionRepository auctionSessionRepository,
@@ -55,8 +48,7 @@ public class AuctionService {
             UserRepository userRepository,
             BookCatalogRepository bookCatalogRepository,
             SimpMessagingTemplate messagingTemplate,
-            NotificationService notificationService,
-            OutboxEventService outboxEventService
+            NotificationOutboxEventPublisher notificationOutboxEventPublisher
     ) {
         this.auctionSessionRepository = auctionSessionRepository;
         this.auctionItemRepository = auctionItemRepository;
@@ -64,8 +56,7 @@ public class AuctionService {
         this.userRepository = userRepository;
         this.bookCatalogRepository = bookCatalogRepository;
         this.messagingTemplate = messagingTemplate;
-        this.notificationService = notificationService;
-        this.outboxEventService = outboxEventService;
+        this.notificationOutboxEventPublisher = notificationOutboxEventPublisher;
     }
 
     @Transactional
@@ -170,7 +161,11 @@ public class AuctionService {
         log.info("Bid placed on item {} by user {} — amount {}", itemId, userId, request.amount());
 
         if (previousWinner != null && !previousWinner.getId().equals(userId)) {
-            notificationService.notifyAuctionOutbid(previousWinner, bookTitle);
+            notificationOutboxEventPublisher.publishAuctionOutbidNotification(
+                    itemId,
+                    previousWinner.getId(),
+                    bookTitle
+            );
         }
 
         final var broadcastMessage = new BidBroadcastMessage(
@@ -233,8 +228,7 @@ public class AuctionService {
         for (var item : session.getItems()) {
             if (item.getWinner() != null) {
                 item.sold();
-                publishAuctionWinnerEmailEvent(item);
-                publishAuctionWonNotificationEvent(item);
+                publishAuctionWinnerEvents(item);
                 log.info("Item {} sold to user {}", item.getId(), item.getWinner().getId());
             } else {
                 item.unsold();
@@ -243,34 +237,22 @@ public class AuctionService {
         }
     }
 
-    private void publishAuctionWinnerEmailEvent(AuctionItem item) {
+    private void publishAuctionWinnerEvents(AuctionItem item) {
         var winner = item.getWinner();
 
-        outboxEventService.publish(
-                AUCTION_WINNER_EMAIL_EVENT,
-                AUCTION_ITEM_AGGREGATE,
+        notificationOutboxEventPublisher.publishAuctionWinnerEmail(
                 item.getId(),
-                Map.of(
-                        "auctionItemId", item.getId(),
-                        "winnerId", winner.getId(),
-                        "winnerEmail", winner.getEmail(),
-                        "winnerFullName", winner.getFullName(),
-                        "bookTitle", item.getBookCatalog().getTitle(),
-                        "winningPrice", item.getCurrentPrice().toPlainString()
-                )
+                winner.getId(),
+                winner.getEmail(),
+                winner.getFullName(),
+                item.getBookCatalog().getTitle(),
+                item.getCurrentPrice()
         );
-    }
 
-    private void publishAuctionWonNotificationEvent(AuctionItem item) {
-        outboxEventService.publish(
-                AUCTION_WON_NOTIFICATION_EVENT,
-                AUCTION_ITEM_AGGREGATE,
+        notificationOutboxEventPublisher.publishAuctionWonNotification(
                 item.getId(),
-                Map.of(
-                        "auctionItemId", item.getId(),
-                        "winnerId", item.getWinner().getId(),
-                        "bookTitle", item.getBookCatalog().getTitle()
-                )
+                winner.getId(),
+                item.getBookCatalog().getTitle()
         );
     }
 

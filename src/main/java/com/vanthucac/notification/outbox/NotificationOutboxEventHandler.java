@@ -1,4 +1,4 @@
-package com.vanthucac.notification.service;
+package com.vanthucac.notification.outbox;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -6,6 +6,7 @@ import com.vanthucac.auth.repository.UserRepository;
 import com.vanthucac.common.outbox.OutboxEvent;
 import com.vanthucac.common.outbox.OutboxEventHandler;
 import com.vanthucac.notification.entity.Notification;
+import com.vanthucac.notification.service.NotificationService;
 import com.vanthucac.user.exception.UserException;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -13,8 +14,6 @@ import org.springframework.stereotype.Component;
 @Component
 @Order(0)
 public class NotificationOutboxEventHandler implements OutboxEventHandler {
-
-    private static final String AUCTION_WON_EVENT = "AUCTION_WON_NOTIFICATION_REQUESTED";
 
     private final ObjectMapper objectMapper;
     private final UserRepository userRepository;
@@ -32,35 +31,38 @@ public class NotificationOutboxEventHandler implements OutboxEventHandler {
 
     @Override
     public boolean supports(String eventType) {
-        return AUCTION_WON_EVENT.equals(eventType);
+        return NotificationEventType.NOTIFICATION_REQUESTED.equals(eventType);
     }
 
     @Override
     public void handle(OutboxEvent event) {
-        var payload = readAuctionWonPayload(event);
-        var winner = userRepository.findById(payload.winnerId())
+        var payload = readPayload(event);
+        var user = userRepository.findById(payload.userId())
                 .orElseThrow(UserException::userNotFound);
 
         notificationService.createNotification(
-                winner,
-                Notification.NotificationType.AUCTION_WON,
-                "Bạn đã thắng đấu giá!",
-                "Chúc mừng! Bạn đã thắng phiên đấu giá cho cuốn \"" + payload.bookTitle() + "\"."
+                user,
+                Notification.NotificationType.valueOf(payload.notificationType()),
+                payload.title(),
+                payload.content()
         );
     }
 
-    private AuctionWonNotificationPayload readAuctionWonPayload(OutboxEvent event) {
+    private NotificationPayload readPayload(OutboxEvent event) {
         try {
-            return objectMapper.readValue(event.getPayload(), AuctionWonNotificationPayload.class);
+            return objectMapper.readValue(event.getPayload(), NotificationPayload.class);
         } catch (JsonProcessingException ex) {
-            throw new IllegalStateException("Invalid auction won notification outbox payload", ex);
+            throw new IllegalStateException("Invalid notification outbox payload", ex);
         }
     }
 
-    private record AuctionWonNotificationPayload(
-            Long auctionItemId,
-            Long winnerId,
-            String bookTitle
+    private record NotificationPayload(
+            Long userId,
+            String notificationType,
+            String title,
+            String content,
+            String sourceType,
+            Long sourceId
     ) {
     }
 }
