@@ -13,6 +13,27 @@ spring:
         jdbc:
           time_zone: UTC
 
+server:
+  forward-headers-strategy: framework
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when_authorized
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:vanthucac},%X{requestId:-}]"
+
 app:
   commission:
     rate: 0.05

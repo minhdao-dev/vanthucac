@@ -3,17 +3,14 @@ spring:
     url: jdbc:mysql://localhost:3306/vanthucac?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
     username: ${DB_USERNAME:vanthucac}
     password: ${DB_PASSWORD:vanthucac123}
-
   jpa:
     hibernate:
       ddl-auto: validate
     show-sql: true
-
   data:
     redis:
       host: localhost
       port: 6379
-
   mail:
     host: smtp.gmail.com
     port: 587
@@ -33,6 +30,11 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
     enabled: true
+
+management:
+  endpoint:
+    health:
+      show-details: always
 
 app:
   jwt:
