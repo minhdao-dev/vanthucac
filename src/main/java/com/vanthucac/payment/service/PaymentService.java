@@ -1,5 +1,6 @@
 package com.vanthucac.payment.service;
 
+import com.vanthucac.audit.service.AuditLogService;
 import com.vanthucac.order.entity.Order;
 import com.vanthucac.order.exception.OrderException;
 import com.vanthucac.payment.dto.MockPaymentCallbackRequest;
@@ -27,15 +28,18 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final EscrowRecordRepository escrowRecordRepository;
     private final PaymentProvider paymentProvider;
+    private final AuditLogService auditLogService;
 
     public PaymentService(
             PaymentRepository paymentRepository,
             EscrowRecordRepository escrowRecordRepository,
-            PaymentProvider paymentProvider
+            PaymentProvider paymentProvider,
+            AuditLogService auditLogService
     ) {
         this.paymentRepository = paymentRepository;
         this.escrowRecordRepository = escrowRecordRepository;
         this.paymentProvider = paymentProvider;
+        this.auditLogService = auditLogService;
     }
 
     @Transactional
@@ -100,6 +104,12 @@ public class PaymentService {
 
         if (!Boolean.TRUE.equals(request.success())) {
             payment.fail();
+            auditLogService.logSystem(
+                    "PAYMENT_CALLBACK_FAILED",
+                    "PAYMENT",
+                    payment.getId(),
+                    "Payment callback failed for provider payment " + payment.getProviderPaymentId()
+            );
             log.info("Mock payment {} failed by callback", payment.getId());
             throw PaymentException.providerRejected();
         }
@@ -107,11 +117,24 @@ public class PaymentService {
         var verification = paymentProvider.verifyPayment(payment.getProviderPaymentId());
         if (!verification.success()) {
             payment.fail();
+            auditLogService.logSystem(
+                    "PAYMENT_CALLBACK_FAILED",
+                    "PAYMENT",
+                    payment.getId(),
+                    "Payment provider verification failed for provider payment " + payment.getProviderPaymentId()
+            );
             throw PaymentException.providerRejected();
         }
 
         payment.complete();
         createEscrowRecordsForPaidOrder(payment.getOrder());
+
+        auditLogService.logSystem(
+                "PAYMENT_CALLBACK_COMPLETED",
+                "PAYMENT",
+                payment.getId(),
+                "Payment callback completed for order #" + payment.getOrder().getId()
+        );
 
         log.info("Payment {} completed by provider callback for order {}",
                 payment.getId(), payment.getOrder().getId());

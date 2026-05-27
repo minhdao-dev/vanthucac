@@ -1,5 +1,6 @@
 package com.vanthucac.listing.service;
 
+import com.vanthucac.audit.service.AuditLogService;
 import com.vanthucac.common.config.CacheConfig;
 import com.vanthucac.common.dto.PageResponse;
 import com.vanthucac.common.util.PageableUtils;
@@ -17,6 +18,7 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,15 +34,18 @@ public class AdminListingService {
     private final BookListingRepository bookListingRepository;
     private final ListingImageRepository listingImageRepository;
     private final NotificationOutboxEventPublisher notificationOutboxEventPublisher;
+    private final AuditLogService auditLogService;
 
     public AdminListingService(
             BookListingRepository bookListingRepository,
             ListingImageRepository listingImageRepository,
-            NotificationOutboxEventPublisher notificationOutboxEventPublisher
+            NotificationOutboxEventPublisher notificationOutboxEventPublisher,
+            AuditLogService auditLogService
     ) {
         this.bookListingRepository = bookListingRepository;
         this.listingImageRepository = listingImageRepository;
         this.notificationOutboxEventPublisher = notificationOutboxEventPublisher;
+        this.auditLogService = auditLogService;
     }
 
     @Transactional(readOnly = true)
@@ -69,7 +74,7 @@ public class AdminListingService {
             @CacheEvict(value = CacheConfig.LISTING_DETAIL_CACHE, key = "#listingId")
     })
     @Transactional
-    public ListingResponse approveListing(Long listingId) {
+    public ListingResponse approveListing(Long listingId, Jwt jwt) {
         var listing = bookListingRepository.findById(listingId)
                 .orElseThrow(ListingException::listingNotFound);
 
@@ -91,6 +96,14 @@ public class AdminListingService {
             );
         }
 
+        auditLogService.log(
+                jwt,
+                "LISTING_APPROVED",
+                "LISTING",
+                listingId,
+                "Admin approved listing #" + listingId
+        );
+
         return ListingResponse.from(listing, getImageUrls(listingId));
     }
 
@@ -99,7 +112,7 @@ public class AdminListingService {
             @CacheEvict(value = CacheConfig.LISTING_DETAIL_CACHE, key = "#listingId")
     })
     @Transactional
-    public ListingResponse rejectListing(Long listingId, String reason) {
+    public ListingResponse rejectListing(Long listingId, String reason, Jwt jwt) {
         var listing = bookListingRepository.findById(listingId)
                 .orElseThrow(ListingException::listingNotFound);
 
@@ -121,6 +134,14 @@ public class AdminListingService {
                     reason
             );
         }
+
+        auditLogService.log(
+                jwt,
+                "LISTING_REJECTED",
+                "LISTING",
+                listingId,
+                "Admin rejected listing #" + listingId + ". Reason: " + reason
+        );
 
         return ListingResponse.from(listing, getImageUrls(listingId));
     }
