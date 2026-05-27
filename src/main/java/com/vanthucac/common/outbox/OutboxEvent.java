@@ -25,6 +25,7 @@ import java.time.Instant;
 public class OutboxEvent {
 
     private static final int DEFAULT_MAX_RETRIES = 5;
+    private static final int MAX_ERROR_LENGTH = 1000;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -96,6 +97,9 @@ public class OutboxEvent {
     }
 
     public void markProcessing() {
+        if (status != OutboxStatus.PENDING) {
+            return;
+        }
         this.status = OutboxStatus.PROCESSING;
     }
 
@@ -108,18 +112,27 @@ public class OutboxEvent {
     public void markFailed(String errorMessage, Instant nextRetryAt) {
         this.retryCount++;
         this.lastError = truncateError(errorMessage);
+
+        if (retryCount >= maxRetries) {
+            this.status = OutboxStatus.FAILED;
+            this.nextRetryAt = nextRetryAt;
+            return;
+        }
+
+        this.status = OutboxStatus.PENDING;
         this.nextRetryAt = nextRetryAt;
-        this.status = retryCount >= maxRetries ? OutboxStatus.FAILED : OutboxStatus.PENDING;
     }
 
     public boolean canProcess() {
-        return status == OutboxStatus.PENDING || status == OutboxStatus.FAILED;
+        return status == OutboxStatus.PENDING;
     }
 
     private String truncateError(String errorMessage) {
         if (errorMessage == null) {
             return null;
         }
-        return errorMessage.length() <= 1000 ? errorMessage : errorMessage.substring(0, 1000);
+        return errorMessage.length() <= MAX_ERROR_LENGTH
+                ? errorMessage
+                : errorMessage.substring(0, MAX_ERROR_LENGTH);
     }
 }
