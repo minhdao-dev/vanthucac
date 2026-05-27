@@ -44,3 +44,5 @@ app:
     region: ap-southeast-1
     s3:
       bucket: vanthucac-prod
+  websocket:
+    allowed-origins: ${WEBSOCKET_ALLOWED_ORIGINS:https://vanthucac.com}

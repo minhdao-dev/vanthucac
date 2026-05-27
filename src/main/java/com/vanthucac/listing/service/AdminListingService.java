@@ -14,6 +14,7 @@ import com.vanthucac.notification.service.NotificationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -62,7 +63,10 @@ public class AdminListingService {
         );
     }
 
-    @CacheEvict(value = CacheConfig.LISTINGS_CACHE, allEntries = true)
+    @Caching(evict = {
+            @CacheEvict(value = CacheConfig.LISTINGS_CACHE, allEntries = true),
+            @CacheEvict(value = CacheConfig.LISTING_DETAIL_CACHE, key = "#listingId")
+    })
     @Transactional
     public ListingResponse approveListing(Long listingId) {
         var listing = bookListingRepository.findById(listingId)
@@ -86,6 +90,10 @@ public class AdminListingService {
         return ListingResponse.from(listing, getImageUrls(listingId));
     }
 
+    @Caching(evict = {
+            @CacheEvict(value = CacheConfig.LISTINGS_CACHE, allEntries = true),
+            @CacheEvict(value = CacheConfig.LISTING_DETAIL_CACHE, key = "#listingId")
+    })
     @Transactional
     public ListingResponse rejectListing(Long listingId, String reason) {
         var listing = bookListingRepository.findById(listingId)

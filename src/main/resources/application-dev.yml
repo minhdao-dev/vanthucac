@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/vanthucac?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh
-    username: root
-    password: root
+    url: jdbc:mysql://localhost:3306/vanthucac?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    username: ${DB_USERNAME:vanthucac}
+    password: ${DB_PASSWORD:vanthucac123}
 
   jpa:
     hibernate:
@@ -39,10 +39,12 @@ app:
     secret: ${JWT_SECRET}
     expiration: 900
   google-books:
-    api-key: ${GOOGLE_BOOKS_API_KEY}
+    api-key: ${GOOGLE_BOOKS_API_KEY:GOOGLE_BOOKS_NOT_SET}
   aws:
     access-key: ${AWS_ACCESS_KEY}
     secret-key: ${AWS_SECRET_KEY}
     region: ap-southeast-1
     s3:
       bucket: vanthucac-dev
+  websocket:
+    allowed-origins: "*"
