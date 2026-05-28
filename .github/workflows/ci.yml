@@ -31,3 +31,14 @@ jobs:
 
       - name: Run tests
         run: ./mvnw test
+        env:
+          SPRING_PROFILES_ACTIVE: integration-test
+          JWT_SECRET: ci-test-jwt-secret-key-at-least-32-characters-long
+          MAIL_USERNAME: test@test.com
+          MAIL_PASSWORD: test
+          GOOGLE_BOOKS_API_KEY: not-needed-for-tests
+          AWS_ACCESS_KEY: fake-access-key
+          AWS_SECRET_KEY: fake-secret-key
+          AWS_REGION: ap-southeast-1
+          AWS_S3_BUCKET: test-bucket
+          WEBSOCKET_ALLOWED_ORIGINS: "*"
