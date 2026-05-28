@@ -24,4 +24,12 @@ public class SellerException extends BusinessException {
                 HttpStatus.NOT_FOUND
         );
     }
+
+    public static SellerException walletNotFound() {
+        return new SellerException(
+                "Seller wallet not found",
+                SellerErrorCode.WALLET_NOT_FOUND,
+                HttpStatus.NOT_FOUND
+        );
+    }
 }

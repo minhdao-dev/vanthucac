@@ -1,0 +1,33 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  mail:
+    host: localhost
+    port: 25
+    username: test@test.com
+    password: test
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+app:
+  jwt:
+    secret: integration-test-jwt-secret-key-min-32-chars
+    expiration: 900
+  google-books:
+    api-key: not-needed-for-tests
+  aws:
+    access-key: fake-access-key
+    secret-key: fake-secret-key
+    region: ap-southeast-1
+    s3:
+      bucket: test-bucket
+  websocket:
+    allowed-origins: "*"
+  outbox:
+    processing-delay-ms: 3600000

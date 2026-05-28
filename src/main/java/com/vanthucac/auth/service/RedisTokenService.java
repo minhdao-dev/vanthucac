@@ -15,6 +15,7 @@ import java.util.Optional;
 public class RedisTokenService {
 
     private static final Duration REFRESH_TOKEN_TTL = Duration.ofDays(7);
+    private static final Duration USER_SESSIONS_TTL = Duration.ofDays(30);
 
     private static final String KEY_REFRESH_TOKEN = "refresh:token:";
     private static final String KEY_REFRESH_USED = "refresh:used:";
@@ -56,6 +57,7 @@ public class RedisTokenService {
         redis.expire(KEY_REFRESH_FAMILY + familyId, REFRESH_TOKEN_TTL);
 
         redis.opsForSet().add(KEY_USER_SESSIONS + userId, sessionId);
+        redis.expire(KEY_USER_SESSIONS + userId, USER_SESSIONS_TTL);
     }
 
     private static final String ROTATE_SCRIPT = """
@@ -64,6 +66,7 @@ public class RedisTokenService {
             local newKey = KEYS[3]
             local familyKey = KEYS[4]
             local sessionKey = KEYS[5]
+            local userSessionsKey = KEYS[6]
             
             local oldData = redis.call('HGETALL', oldKey)
             if #oldData == 0 then
@@ -71,6 +74,7 @@ public class RedisTokenService {
             end
             
             local ttl = %d
+            local userSessionsTtl = %d
             
             redis.call('DEL', oldKey)
             
@@ -96,9 +100,15 @@ public class RedisTokenService {
             redis.call('EXPIRE', familyKey, ttl)
             
             redis.call('HSET', sessionKey, 'lastUsedAt', ARGV[4])
+            redis.call('EXPIRE', sessionKey, ttl)
+            
+            redis.call('EXPIRE', userSessionsKey, userSessionsTtl)
             
             return 1
-            """.formatted((int) REFRESH_TOKEN_TTL.toSeconds());
+            """.formatted(
+            (int) REFRESH_TOKEN_TTL.toSeconds(),
+            (int) USER_SESSIONS_TTL.toSeconds()
+    );
 
     public boolean rotateRefreshToken(
             String oldTokenHash,
@@ -117,7 +127,8 @@ public class RedisTokenService {
                 KEY_REFRESH_USED + oldTokenHash,
                 KEY_REFRESH_TOKEN + newTokenHash,
                 KEY_REFRESH_FAMILY + familyId,
-                KEY_REFRESH_SESSION + sessionId
+                KEY_REFRESH_SESSION + sessionId,
+                KEY_USER_SESSIONS + userId
         );
 
         var args = new String[]{

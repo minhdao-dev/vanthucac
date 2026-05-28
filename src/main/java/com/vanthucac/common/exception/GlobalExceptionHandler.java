@@ -76,6 +76,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.badRequest().body(problem);
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    ResponseEntity<ProblemDetail> handleIllegalState(IllegalStateException ex) {
+        var problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.CONFLICT,
+                ex.getMessage() != null ? ex.getMessage() : "Operation not allowed in current state"
+        );
+        problem.setProperty("errorCode", "ILLEGAL_STATE");
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
+    }
+
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     ResponseEntity<ProblemDetail> handleOptimisticLock() {
         var problem = ProblemDetail.forStatusAndDetail(

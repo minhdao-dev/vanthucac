@@ -18,10 +18,13 @@ import com.vanthucac.notification.outbox.NotificationOutboxEventPublisher;
 import com.vanthucac.user.exception.UserException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -41,6 +44,8 @@ public class AuctionService {
     private final SimpMessagingTemplate messagingTemplate;
     private final NotificationOutboxEventPublisher notificationOutboxEventPublisher;
 
+    private AuctionService self;
+
     public AuctionService(
             AuctionSessionRepository auctionSessionRepository,
             AuctionItemRepository auctionItemRepository,
@@ -57,6 +62,12 @@ public class AuctionService {
         this.bookCatalogRepository = bookCatalogRepository;
         this.messagingTemplate = messagingTemplate;
         this.notificationOutboxEventPublisher = notificationOutboxEventPublisher;
+    }
+
+    @Autowired
+    @Lazy
+    public void setSelf(AuctionService self) {
+        this.self = self;
     }
 
     @Transactional
@@ -142,7 +153,7 @@ public class AuctionService {
         }
 
         if (item.getWinner() != null && item.getWinner().getId().equals(userId)) {
-            throw AuctionException.bidOnOwnItem();
+            throw AuctionException.alreadyHighestBidder();
         }
 
         if (!item.canBid(request.amount())) {
@@ -201,7 +212,6 @@ public class AuctionService {
         );
     }
 
-    @Transactional
     public void processScheduledSessions() {
         var now = Instant.now();
 
@@ -209,19 +219,41 @@ public class AuctionService {
                 .findByStatusAndStartTimeBefore(AuctionSession.SessionStatus.SCHEDULED, now);
 
         for (var session : toActivate) {
-            session.activate();
-            session.getItems().forEach(AuctionItem::activate);
-            log.info("Auction session {} activated", session.getId());
+            try {
+                self.activateSession(session.getId());
+            } catch (Exception ex) {
+                log.error("Failed to activate auction session {}", session.getId(), ex);
+            }
         }
 
         var toClose = auctionSessionRepository
                 .findByStatusAndEndTimeBefore(AuctionSession.SessionStatus.ACTIVE, now);
 
         for (var session : toClose) {
-            session.close();
-            closeSessionItems(session);
-            log.info("Auction session {} closed", session.getId());
+            try {
+                self.closeSession(session.getId());
+            } catch (Exception ex) {
+                log.error("Failed to close auction session {}", session.getId(), ex);
+            }
         }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void activateSession(Long sessionId) {
+        var session = auctionSessionRepository.findWithItemsById(sessionId)
+                .orElseThrow(AuctionException::sessionNotFound);
+        session.activate();
+        session.getItems().forEach(AuctionItem::activate);
+        log.info("Auction session {} activated", sessionId);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void closeSession(Long sessionId) {
+        var session = auctionSessionRepository.findWithItemsById(sessionId)
+                .orElseThrow(AuctionException::sessionNotFound);
+        session.close();
+        closeSessionItems(session);
+        log.info("Auction session {} closed", sessionId);
     }
 
     private void closeSessionItems(AuctionSession session) {
