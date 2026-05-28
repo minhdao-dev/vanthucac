@@ -142,7 +142,6 @@ public class PaymentService {
         return PaymentResponse.from(payment);
     }
 
-    @Transactional(readOnly = true)
     public void ensureOrderPaymentCompleted(Long orderId) {
         var payment = paymentRepository.findByOrderId(orderId)
                 .orElseThrow(PaymentException::paymentNotFound);

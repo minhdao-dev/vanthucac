@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.core.annotation.Order;
 import org.springframework.data.redis.RedisSystemException;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.lang.NonNull;
@@ -20,12 +21,25 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Component
-@Order(1)
+@Order(2)
 public class RedisRateLimitFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(RedisRateLimitFilter.class);
+
+    private static final String INCR_SCRIPT = """
+            local key = KEYS[1]
+            local ttl = ARGV[1]
+            local count = redis.call('INCR', key)
+            if count == 1 then
+                redis.call('EXPIRE', key, ttl)
+            end
+            return count
+            """;
+
+    private static final RedisScript<Long> INCR_WITH_TTL = RedisScript.of(INCR_SCRIPT, Long.class);
 
     private static final List<RateLimitRule> RULES = List.of(
             new RateLimitRule(HttpMethod.POST, "/api/v1/auth/login", 10, Duration.ofSeconds(60)),
@@ -60,7 +74,7 @@ public class RedisRateLimitFilter extends OncePerRequestFilter {
         try {
             var ip = extractClientIp(request);
             var key = buildRedisKey(ip, rule, path);
-            var currentCount = incrementRequestCount(key, rule.window());
+            var currentCount = incrementAtomic(key, rule.window());
 
             if (currentCount > rule.limit()) {
                 log.warn("Rate limit exceeded — method: {}, path: {}, ip: {}",
@@ -75,19 +89,20 @@ public class RedisRateLimitFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
+    private long incrementAtomic(String key, Duration ttl) {
+        var result = redisTemplate.execute(
+                INCR_WITH_TTL,
+                List.of(key),
+                String.valueOf(ttl.toSeconds())
+        );
+        return Objects.requireNonNull(result, "Lua INCR_WITH_TTL must return a value");
+    }
+
     private RateLimitRule findMatchingRule(String method, String path) {
         return RULES.stream()
                 .filter(rule -> rule.matches(method, path))
                 .findFirst()
                 .orElse(null);
-    }
-
-    private long incrementRequestCount(String key, Duration ttl) {
-        var count = redisTemplate.opsForValue().increment(key);
-        if (count != null && count == 1L) {
-            redisTemplate.expire(key, ttl);
-        }
-        return count == null ? 1L : count;
     }
 
     private String buildRedisKey(String ip, RateLimitRule rule, String path) {

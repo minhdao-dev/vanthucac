@@ -34,14 +34,9 @@ public class AuctionException extends BusinessException {
                 AuctionErrorCode.BID_TOO_LOW, HttpStatus.BAD_REQUEST);
     }
 
-    public static AuctionException bidOnOwnItem() {
-        return new AuctionException("You cannot bid on your own auction item",
-                AuctionErrorCode.BID_ON_OWN_ITEM, HttpStatus.BAD_REQUEST);
-    }
-
-    public static AuctionException bidConflict() {
-        return new AuctionException("Another bid was placed simultaneously, please try again",
-                AuctionErrorCode.BID_CONFLICT, HttpStatus.CONFLICT);
+    public static AuctionException alreadyHighestBidder() {
+        return new AuctionException("You are already the highest bidder on this item",
+                AuctionErrorCode.ALREADY_HIGHEST_BIDDER, HttpStatus.BAD_REQUEST);
     }
 
     public static AuctionException invalidTime() {

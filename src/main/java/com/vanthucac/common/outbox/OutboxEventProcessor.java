@@ -2,8 +2,11 @@ package com.vanthucac.common.outbox;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
@@ -18,6 +21,8 @@ public class OutboxEventProcessor {
     private final OutboxEventRepository outboxEventRepository;
     private final List<OutboxEventHandler> handlers;
 
+    private OutboxEventProcessor self;
+
     public OutboxEventProcessor(
             OutboxEventRepository outboxEventRepository,
             List<OutboxEventHandler> handlers
@@ -26,23 +31,33 @@ public class OutboxEventProcessor {
         this.handlers = handlers;
     }
 
-    @Scheduled(fixedDelayString = "${app.outbox.processing-delay-ms:5000}")
-    @Transactional
-    public void processPendingEvents() {
-        var events = outboxEventRepository.findTop50ByStatusAndNextRetryAtLessThanEqualOrderByCreatedAtAsc(
-                OutboxEvent.OutboxStatus.PENDING,
-                Instant.now()
-        );
+    @Autowired
+    @Lazy
+    public void setSelf(OutboxEventProcessor self) {
+        this.self = self;
+    }
 
-        for (var event : events) {
-            processEvent(event);
+    @Scheduled(fixedDelayString = "${app.outbox.processing-delay-ms:5000}")
+    public void processPendingEvents() {
+        var eventIds = outboxEventRepository
+                .findTop50IdsByStatusAndNextRetryAtLessThanEqualOrderByCreatedAtAsc(
+                        OutboxEvent.OutboxStatus.PENDING,
+                        Instant.now()
+                );
+
+        for (var eventId : eventIds) {
+            try {
+                self.processSingleEvent(eventId);
+            } catch (Exception ex) {
+                log.error("Unexpected error processing outbox event {}", eventId, ex);
+            }
         }
     }
 
-    private void processEvent(OutboxEvent event) {
-        if (!event.canProcess()) {
-            return;
-        }
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void processSingleEvent(Long eventId) {
+        var event = outboxEventRepository.findById(eventId).orElse(null);
+        if (event == null || !event.canProcess()) return;
 
         try {
             event.markProcessing();
