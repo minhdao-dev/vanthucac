@@ -2,42 +2,25 @@
 
 ![Java](https://img.shields.io/badge/Java-21-blue)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-brightgreen)
-![Database](https://img.shields.io/badge/Database-MySQL%208-blue)
-![Cache](https://img.shields.io/badge/Cache-Redis-red)
+![MySQL](https://img.shields.io/badge/MySQL-8.0-blue)
+![Redis](https://img.shields.io/badge/Redis-8-red)
+![CI](https://github.com/minhdao-dev/vanthucac/actions/workflows/ci.yml/badge.svg)
 
-Spring Boot backend cho hệ thống sàn giao dịch sách, hỗ trợ B2C, C2C, escrow flow và đấu giá sách theo thời gian thực.
+Spring Boot backend cho hệ thống sàn giao dịch sách, hỗ trợ B2C, C2C với escrow flow và đấu giá sách real-time qua
+WebSocket.
 
-> Portfolio project — Rebuild từ đồ án tốt nghiệp JSP/Servlet thành Spring Boot marketplace theo hướng production-inspired backend.
+> Portfolio project — Rebuild từ đồ án tốt nghiệp JSP/Servlet thành Spring Boot marketplace theo hướng production-ready
+> backend.
 
 ---
 
 ## Business Models
 
-| Model   | Mô tả                                                               |
-|---------|---------------------------------------------------------------------|
-| B2C     | Platform bán sách mới trực tiếp                                     |
-| C2C     | User đăng ký seller, đăng bán sách cũ và xử lý giao dịch qua escrow |
-| Auction | Phiên đấu giá sách quý hiếm theo thời gian thực qua WebSocket       |
-
----
-
-## Core Features
-
-- Authentication với JWT access token và refresh token.
-- Refresh token rotation, Redis session store và reuse detection.
-- Role-based access control cho user, seller và admin.
-- Seller onboarding và seller wallet.
-- Book catalog và listing management.
-- Admin approve/reject listing.
-- Cart và checkout flow.
-- Parent order, sub-order theo seller và escrow transaction.
-- Commission calculation và release tiền về seller wallet.
-- Auction session, bid, winner selection và real-time broadcast qua WebSocket.
-- Notification và email async.
-- AWS S3 presigned URL upload.
-- Flyway database migration.
-- Docker Compose cho local development.
-- Swagger/OpenAPI documentation.
+| Model   | Mô tả                                                          |
+|---------|----------------------------------------------------------------|
+| B2C     | Platform bán sách mới trực tiếp cho người mua                  |
+| C2C     | User đăng ký seller, đăng bán sách cũ, giao dịch qua escrow    |
+| Auction | Phiên đấu giá sách quý hiếm, real-time broadcast qua WebSocket |
 
 ---
 
@@ -53,88 +36,136 @@ Spring Boot backend cho hệ thống sàn giao dịch sách, hỗ trợ B2C, C2C
 | Cache / Session | Redis 8                                              |
 | Realtime        | Spring WebSocket STOMP                               |
 | Storage         | AWS S3 Presigned URL                                 |
-| Migration       | Flyway                                               |
-| Docs            | SpringDoc OpenAPI                                    |
-| Build Tool      | Maven Wrapper                                        |
+| Migration       | Flyway (17 migrations)                               |
+| Docs            | SpringDoc OpenAPI / Swagger                          |
+| Build           | Maven Wrapper                                        |
 | Deploy          | Docker + Docker Compose                              |
+| CI              | GitHub Actions                                       |
 
 ---
 
-## Architecture Overview
+## Architecture
 
-```text
+```
 Client
-  |
-  v
-Spring Security / JWT Filter
-  |
-  v
+  │
+  ▼
+Rate Limit Filter (Redis — atomic Lua script)
+  │
+  ▼
+Spring Security Filter Chain
+  │  JWT verify stateless — không gọi DB/Redis trong happy path
+  ▼
 Controller Layer
-  |
-  v
-Service Layer / Domain Use Cases
-  |
-  v
+  │
+  ▼
+Service Layer
+  │  Transaction boundary rõ ràng
+  │  Outbox pattern cho async events
+  │  Pessimistic locking cho stock checkout
+  │  Pessimistic locking cho auction bid
+  ▼
 Repository Layer
-  |
-  +--> MySQL
-  +--> Redis
-  +--> AWS S3
-  +--> Mail Provider
-  +--> WebSocket Broker
+  │
+  ├── MySQL 8.0
+  ├── Redis 8 (token store, rate limit, cache)
+  ├── AWS S3 (file upload)
+  └── WebSocket Broker (real-time bid broadcast)
+```
+
+**Package structure — Modular Monolith:**
+
+```
+com.vanthucac
+├── auth/         JWT, refresh token rotation, reuse detection
+├── user/         Profile, upgrade to seller
+├── seller/       Seller profile, wallet, wallet transactions
+├── catalog/      Book catalog, Google Books API integration
+├── listing/      Book listings, admin review
+├── cart/         Cart management
+├── order/        Checkout, parent/sub-order, escrow flow
+├── payment/      Payment, escrow release, commission
+├── auction/      Auction session, bidding, scheduler
+├── notification/ Email, in-app notification
+├── audit/        Audit log
+└── common/       Security, outbox, exception, config
 ```
 
 ---
 
-## Main Business Flow
+## Key Technical Decisions
 
-```text
-User registers / logs in
-  |
-  v
-User becomes seller
-  |
-  v
-Seller creates book listing
-  |
-  v
-Admin approves listing
-  |
-  v
-Buyer adds listing to cart
-  |
-  v
-Buyer checks out
-  |
-  v
-System creates parent order and seller sub-orders
-  |
-  v
-Payment is created
-  |
-  v
-Escrow holds money for each seller sub-order
-  |
-  v
-Order is completed
-  |
-  v
-System releases escrow, deducts commission and credits seller wallet
+### Authentication
+
+- JWT access token — TTL 15 phút, stateless verify, không gọi Redis
+- Refresh token — opaque 256-bit, lưu SHA-256 hash trong Redis
+- Token rotation — single-use, atomic Lua script tránh race condition
+- Reuse detection — lưu used token hash, revoke cả token family khi phát hiện
+
+### Concurrency
+
+- Stock checkout — `SELECT FOR UPDATE` với deadlock avoidance (sort by listing ID trước khi lock)
+- Auction bid — `SELECT FOR UPDATE`, `@Transactional(REQUIRES_NEW)` per session
+- `StockService` annotated `@Transactional(propagation = MANDATORY)` — fail fast nếu gọi ngoài transaction
+
+### Outbox Pattern
+
+- Event được lưu trong cùng transaction với business data
+- Processor retry với exponential backoff: 10s → 30s → 1m → 5m → 15m
+- Mỗi event xử lý trong `@Transactional(REQUIRES_NEW)` riêng biệt
+
+### Escrow Flow
+
 ```
+Buyer pays
+  └─► Escrow HOLDING
+        └─► Buyer confirms receipt
+              └─► Escrow RELEASING
+                    └─► Commission deducted
+                          └─► Net amount credited to Seller Wallet
+                                └─► Escrow RELEASED
+```
+
+Idempotency check trước khi credit — không bị double-credit khi retry.
+
+### WebSocket
+
+- Broadcast sau `afterCommit()` — tránh client nhận data nhưng DB rollback
+
+---
+
+## Core Features
+
+- JWT authentication với access token + refresh token rotation
+- Role-based access: `BUYER`, `SELLER`, `ADMIN`
+- Seller onboarding, seller wallet và wallet transaction ledger
+- Book catalog với Google Books API ISBN auto-fill
+- Listing management với admin approve/reject workflow
+- Cart và multi-seller checkout
+- Parent order + seller sub-orders
+- Mock payment provider + escrow flow
+- Commission calculation (configurable rate)
+- Real-time auction bidding qua WebSocket
+- Async email/notification qua Outbox pattern
+- AWS S3 presigned URL upload
+- Flyway database migration (17 migrations)
+- Rate limiting trên Redis (atomic, production-safe)
+- Audit log cho các thao tác quan trọng
+- Actuator health check, metrics, Prometheus endpoint
+- Docker Compose cho local dev và production
 
 ---
 
 ## Yêu cầu
 
 - Java 21
-- Docker
-- Docker Compose
+- Docker + Docker Compose
 
 ---
 
-## Chạy local
+## Chạy local (development)
 
-### 1. Clone project
+### 1. Clone
 
 ```bash
 git clone https://github.com/minhdao-dev/vanthucac.git
@@ -147,26 +178,10 @@ cd vanthucac
 cp .env.example .env
 ```
 
-Mở file `.env` và cấu hình các biến cần thiết:
-
-```env
-JWT_SECRET=
-DB_USERNAME=
-DB_PASSWORD=
-MAIL_USERNAME=
-MAIL_PASSWORD=
-GOOGLE_BOOKS_API_KEY=
-AWS_ACCESS_KEY=
-AWS_SECRET_KEY=
-AWS_REGION=
-AWS_S3_BUCKET=
-WEBSOCKET_ALLOWED_ORIGINS=
-```
-
-Tạo `JWT_SECRET`:
+Điền các biến trong `.env`. Tạo JWT secret:
 
 ```bash
-openssl rand -base64 32
+openssl rand -base64 48
 ```
 
 ### 3. Khởi động MySQL và Redis
@@ -183,195 +198,144 @@ chmod +x mvnw
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-### 5. Truy cập Swagger UI
+### 5. Swagger UI
 
-```text
+```
 http://localhost:8080/swagger-ui.html
 ```
 
 ---
 
+## Chạy production (Docker)
+
+### 1. Cấu hình môi trường
+
+```bash
+cp .env.prod.example .env.prod
+```
+
+Điền đầy đủ credentials trong `.env.prod`.
+
+### 2. Build và deploy
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+```
+
+### 3. Kiểm tra
+
+```bash
+docker compose -f docker-compose.prod.yml ps
+curl http://localhost/actuator/health
+```
+
+App healthy khi trả về `{"status":"UP"}`.
+
+> Swagger UI bị tắt trong prod. Để bật tạm thời cho demo, thêm `SPRINGDOC_SWAGGER_UI_ENABLED=true` và
+`SPRINGDOC_API_DOCS_ENABLED=true` vào `.env.prod`.
+
+---
+
 ## Tài khoản Admin mặc định
 
-```text
+```
 Email:    admin@vanthucac.com
 Password: Admin@123
 ```
 
-Tài khoản admin mặc định chỉ phục vụ môi trường development/demo. Khi triển khai môi trường thật, cần đổi mật khẩu hoặc thay thế cơ chế seed admin.
+> Chỉ dùng cho development/demo. Đổi mật khẩu hoặc thay thế seed data trước khi deploy production thật.
 
 ---
 
 ## Chạy tests
+
+Tests dùng Testcontainers — cần Docker đang chạy.
 
 ```bash
 chmod +x mvnw
 ./mvnw test
 ```
 
-Tests hiện dùng H2 in-memory, không yêu cầu MySQL hoặc Redis đang chạy.
+Integration tests bao gồm:
 
----
-
-## CI
-
-Project dùng GitHub Actions để tự động build và chạy test khi push hoặc mở pull request vào các nhánh:
-
-```text
-main
-develop
-```
-
-Workflow chính:
-
-```text
-.github/workflows/ci.yml
-```
+- `CheckoutIntegrationTest` — happy path, stock validation, concurrent race condition
+- `AuctionBiddingIntegrationTest` — valid bid, bid validation, concurrent same-amount bid
 
 ---
 
 ## Environment Variables
 
-| Variable                    |   Bắt buộc | Mô tả                                                     |
-|-----------------------------|-----------:|-----------------------------------------------------------|
-| `JWT_SECRET`                |         Có | Secret dùng để ký JWT, tối thiểu 32 ký tự ngẫu nhiên      |
-| `DB_USERNAME`               |         Có | MySQL application user                                    |
-| `DB_PASSWORD`               |         Có | MySQL application password                                |
-| `MAIL_USERNAME`             |         Có | Email username                                            |
-| `MAIL_PASSWORD`             |         Có | Email app password                                        |
-| `GOOGLE_BOOKS_API_KEY`      |      Không | Google Books API key, thiếu thì seller nhập sách thủ công |
-| `AWS_ACCESS_KEY`            |         Có | AWS access key                                            |
-| `AWS_SECRET_KEY`            |         Có | AWS secret key                                            |
-| `AWS_REGION`                |         Có | AWS region                                                |
-| `AWS_S3_BUCKET`             |         Có | S3 bucket name                                            |
-| `WEBSOCKET_ALLOWED_ORIGINS` | Production | Domain frontend được phép kết nối WebSocket               |
+| Variable                    | Bắt buộc | Mô tả                                        |
+|-----------------------------|:--------:|----------------------------------------------|
+| `JWT_SECRET`                |    ✅     | Secret ký JWT, tối thiểu 32 ký tự ngẫu nhiên |
+| `DB_USERNAME`               |    ✅     | MySQL application user                       |
+| `DB_PASSWORD`               |    ✅     | MySQL application password                   |
+| `REDIS_PASSWORD`            | ✅ (prod) | Redis auth password                          |
+| `MAIL_USERNAME`             |    ✅     | Gmail address                                |
+| `MAIL_PASSWORD`             |    ✅     | Gmail app password                           |
+| `AWS_ACCESS_KEY`            |    ✅     | AWS access key                               |
+| `AWS_SECRET_KEY`            |    ✅     | AWS secret key                               |
+| `AWS_REGION`                |    ✅     | AWS region (vd: `ap-southeast-1`)            |
+| `AWS_S3_BUCKET`             |    ✅     | S3 bucket name                               |
+| `GOOGLE_BOOKS_API_KEY`      |  Không   | Thiếu thì seller nhập sách thủ công          |
+| `WEBSOCKET_ALLOWED_ORIGINS` | ✅ (prod) | Domain frontend được phép kết nối WebSocket  |
 
 ---
 
 ## WebSocket — Đấu giá real-time
 
-```text
+```
 Endpoint:  ws://localhost:8080/ws
 Subscribe: /topic/auction/{itemId}
 ```
 
-Khi bid được chấp nhận, server broadcast `BidBroadcastMessage` tới toàn bộ client đang subscribe vào auction item tương ứng.
+Khi bid được chấp nhận và transaction commit, server broadcast `BidBroadcastMessage` tới toàn bộ client đang subscribe
+vào item đó.
 
 ---
 
 ## API Documentation
 
-Swagger UI:
-
-```text
-http://localhost:8080/swagger-ui.html
+```
+Swagger UI:   http://localhost:8080/swagger-ui.html   (dev only)
+OpenAPI JSON: http://localhost:8080/v3/api-docs        (dev only)
 ```
 
-OpenAPI JSON:
+---
 
-```text
-http://localhost:8080/v3/api-docs
+## CI/CD
+
+GitHub Actions tự động build và test khi push hoặc mở pull request vào `main` và `develop`.
+
+```
+.github/workflows/ci.yml
 ```
 
 ---
 
 ## Branching Strategy
 
-Project dùng flow:
-
-```text
-main        stable/demo-ready branch
+```
+main        stable, demo-ready
 develop     integration branch
-feature/*   feature development
+feature/*   tính năng mới
 fix/*       bug fixes
-chore/*     tooling, docs, CI, config
-refactor/*  internal refactoring
-test/*      test coverage improvements
+refactor/*  refactoring nội bộ
+chore/*     tooling, config, CI
 ```
 
-Không commit trực tiếp vào `main`. Các thay đổi nên đi qua pull request từ nhánh feature/chore/fix vào `develop`, sau đó merge `develop` vào `main` khi ổn định.
+Không commit trực tiếp vào `main`. Mọi thay đổi đi qua pull request từ feature/fix vào `develop`, sau đó merge
+`develop` → `main` khi ổn định.
 
 ---
 
 ## Known Limitations
 
-- Payment hiện là mock. `Payment.createMock()` tự set trạng thái `COMPLETED`, chưa tích hợp VNPay, MoMo hoặc provider thật.
-- Rate limiter hiện là in-memory, chưa phù hợp khi scale nhiều instance. Production cần Redis-based rate limiter.
-- Admin mặc định trong migration chỉ nên dùng cho development/demo.
-- Email async hiện chưa có persistent queue/outbox, email pending có thể mất nếu server restart giữa chừng.
-- Tests hiện chưa bao phủ đầy đủ các luồng critical như concurrent bidding, payment callback, escrow idempotency và order state transition.
-
----
-
-## Production Improvement Roadmap
-
-### Phase 1 — Repository polish and CI
-
-- Sửa README, clone URL, badges và architecture overview.
-- Thêm GitHub Actions CI.
-- Đảm bảo `./mvnw test` pass trên GitHub Actions.
-- Thêm branch strategy rõ ràng.
-
-### Phase 2 — Critical test coverage
-
-- Test refresh token rotation và reuse detection.
-- Test checkout flow với một seller và nhiều seller.
-- Test listing out of stock.
-- Test cancel order hoàn stock.
-- Test escrow release idempotency.
-- Test auction bid validation và concurrent bidding.
-- Test authorization cho admin/seller/user.
-
-### Phase 3 — Payment provider abstraction
-
-- Tách `PaymentProvider` interface.
-- Tạo `MockPaymentProvider`.
-- Đổi checkout flow sang `PENDING_PAYMENT`.
-- Thêm payment callback/webhook mock endpoint.
-- Chuẩn bị tích hợp VNPay hoặc MoMo.
-
-### Phase 4 — Order state machine
-
-- Chuẩn hóa order status transition.
-- Không set order status trực tiếp trong service.
-- Thêm test cho từng transition hợp lệ và không hợp lệ.
-
-### Phase 5 — Wallet ledger
-
-- Thêm bảng `wallet_transactions`.
-- Lưu `balance_before`, `balance_after`, `reference_type`, `reference_id`.
-- Mọi thay đổi số dư ví phải có transaction log.
-- Escrow release phải idempotent.
-
-### Phase 6 — Redis-based rate limiter
-
-- Chuyển rate limiter từ in-memory sang Redis.
-- Áp dụng cho login, register, refresh token, bid và upload presigned URL.
-
-### Phase 7 — Outbox pattern
-
-- Thêm bảng `outbox_events`.
-- Lưu event cùng transaction nghiệp vụ.
-- Worker xử lý email/notification có retry.
-- Không mất event khi server restart.
-
-### Phase 8 — Observability
-
-- Thêm Spring Boot Actuator.
-- Thêm health check, metrics và Prometheus endpoint.
-- Thêm request id/correlation id vào log.
-- Ghi log cho các flow quan trọng như checkout, payment, escrow, auction.
-
-### Phase 9 — Production deployment
-
-- Thêm `docker-compose.prod.yml`.
-- Thêm Nginx reverse proxy.
-- Thêm healthcheck cho app.
-- Chuẩn hóa production environment variables.
-- Viết tài liệu deploy VPS.
+- Payment là mock — chưa tích hợp VNPay, MoMo hoặc provider thật
+- Admin seed trong Flyway chỉ dùng cho development/demo
 
 ---
 
 ## License
 
-This project is currently maintained as a personal portfolio project.
+Personal portfolio project.
